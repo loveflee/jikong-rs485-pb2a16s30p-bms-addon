@@ -1,33 +1,46 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 echo "📦 JK BMS TCP Monitor Add-on starting..."
 
-# 讀取 /data/options.json，轉成 app 用的 config.yaml
-# 這裡用 jq 把 HA options 填入你的原本 config 風格
+# 必要工具檢查 (jq)
+if ! command -v jq >/dev/null 2>&1; then
+  echo "❌ jq not found"
+  exit 1
+fi
 
-cat > /data/config.yaml <<EOF
+OPTIONS_FILE="/data/options.json"
+OUT_CONFIG="/data/config.yaml"
+
+if [ ! -f "${OPTIONS_FILE}" ]; then
+  echo "❌ options.json not found at ${OPTIONS_FILE}"
+  exit 1
+fi
+
+# 產生 /data/config.yaml 給應用程式使用
+cat > "${OUT_CONFIG}" <<EOF
 tcp:
-  host: "$(jq -r '.tcp_host' /data/options.json)"
-  port: $(jq -r '.tcp_port' /data/options.json)
-  timeout: $(jq -r '.tcp_timeout' /data/options.json)
-  buffer_size: $(jq -r '.tcp_buffer_size' /data/options.json)
+  host: "$(jq -r '.modbus_host // empty' ${OPTIONS_FILE})"
+  port: $(jq -r '.modbus_port // 502' ${OPTIONS_FILE})
+  timeout: $(jq -r '.modbus_timeout // 10' ${OPTIONS_FILE})
+  buffer_size: $(jq -r '.modbus_buffer_size // 4096' ${OPTIONS_FILE})
 
 mqtt:
-  broker: "$(jq -r '.mqtt_broker' /data/options.json)"
-  port: $(jq -r '.mqtt_port' /data/options.json)
-  username: "$(jq -r '.mqtt_username' /data/options.json)"
-  password: "$(jq -r '.mqtt_password' /data/options.json)"
-  discovery_prefix: "$(jq -r '.mqtt_discovery_prefix' /data/options.json)"
-  topic_prefix: "$(jq -r '.mqtt_topic_prefix' /data/options.json)"
+  broker: "$(jq -r '.mqtt_host // empty' ${OPTIONS_FILE})"
+  port: $(jq -r '.mqtt_port // 1883' ${OPTIONS_FILE})
+  username: "$(jq -r '.mqtt_username // empty' ${OPTIONS_FILE})"
+  password: "$(jq -r '.mqtt_password // empty' ${OPTIONS_FILE})"
+  discovery_prefix: "$(jq -r '.mqtt_discovery_prefix // "homeassistant"' ${OPTIONS_FILE})"
+  topic_prefix: "$(jq -r '.mqtt_topic_prefix // "bms"' ${OPTIONS_FILE})"
+  client_id: "$(jq -r '.mqtt_client_id // "jk_bms_monitor"' ${OPTIONS_FILE})"
 
 app:
-  packet_expire_time: $(jq -r '.packet_expire_time' /data/options.json)
-  settings_publish_interval: $(jq -r '.settings_publish_interval' /data/options.json)
+  packet_expire_time: $(jq -r '.packet_expire_time // 0.4' ${OPTIONS_FILE})
+  settings_publish_interval: $(jq -r '.settings_publish_interval // 1800' ${OPTIONS_FILE})
 EOF
 
-echo "✅ Generated /data/config.yaml for app:"
+echo "✅ Generated ${OUT_CONFIG}:"
+cat "${OUT_CONFIG}"
 cat /data/config.yaml
-
-# 執行 app（確保 main.py 有改成讀 /data/config.yaml）
+# 啟動應用
 exec python /app/main.py

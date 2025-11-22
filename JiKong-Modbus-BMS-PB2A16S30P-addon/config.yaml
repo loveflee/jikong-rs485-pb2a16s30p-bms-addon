@@ -26,22 +26,21 @@ options:
   packet_expire_time: 0.4
   settings_publish_interval: 1800
 # ✅ options 型別定義（HA UI 驗證用）schema:
+schema:
   tcp_host: str
   tcp_port: int
   tcp_timeout: int
-  tcp_buffer_size: int
-
-  mqtt_broker: str
+  mqtt_host: str
   mqtt_port: int
   mqtt_username: str
   mqtt_password: str
   mqtt_discovery_prefix: str
   mqtt_topic_prefix: str
-
   packet_expire_time: float
   settings_publish_interval: int
 ports: {}
 map:
   - type: addon_config
     read_only: false
+
 panel_icon: mdi:battery

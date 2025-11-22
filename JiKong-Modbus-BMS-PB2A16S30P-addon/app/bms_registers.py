@@ -1,5 +1,4 @@
 # bms_registers.py
-
 # 定義數據類型常量
 TYPE_U8  = 'B'  # Unsigned 8-bit
 TYPE_U16 = 'H'  # Unsigned 16-bit
@@ -7,7 +6,6 @@ TYPE_I16 = 'h'  # Signed 16-bit
 TYPE_U32 = 'I'  # Unsigned 32-bit
 TYPE_I32 = 'i'  # Signed 32-bit
 TYPE_STR = 's'  # String/ASCII
-
 # 單位轉換 Lambda 函數
 conv_div1000 = lambda v: round(v / 1000.0, 3)  # mV -> V, mA -> A
 conv_div100  = lambda v: round(v / 100.0, 2)   # 0.01V -> V
@@ -15,6 +13,13 @@ conv_div10   = lambda v: round(v / 10.0, 1)    # 0.1C -> C, 0.1S -> S
 conv_none    = lambda v: v                     # 無需轉換
 conv_hex     = lambda v: f"0x{v:08X}"          # 顯示為 HEX
 conv_plus1   = lambda v: v + 1                 # 將索引值 +1
+# 新增一個常量方便閱讀 (可選)
+HA_SENSOR = "sensor"
+HA_BINARY = "binary_sensor"
+# BMS Register Map
+# Tuple 結構擴充為:
+# (Name, Unit, Type, Converter, HA_Type, Icon)
+# 如果後兩項省略，預設為 HA_SENSOR 和 None
 # ---------------------------------------------------------
 # BMS Register Map (Full Version)
 # Key: Response ID (e.g., 0x01, 0x02)
@@ -25,12 +30,12 @@ BMS_MAP = {
     # 0x01: Parameter Settings (Base 0x1000) - 讀取保護板設定
     # =====================================================
     0x01: {
-        0:   ("进入休眠电压", "V", TYPE_U32, conv_div1000),
+        0:   ("进入休眠电压", "V", TYPE_U32, conv_div1000 ,HA_SENSOR, "mdi:sleep"),
         4:   ("单体欠压保护", "V", TYPE_U32, conv_div1000),
         8:   ("单体欠压保护恢复", "V", TYPE_U32, conv_div1000),
         12:  ("单体过充保护", "V", TYPE_U32, conv_div1000),
         16:  ("单体过充保护恢复电", "V", TYPE_U32, conv_div1000),
-        20:  ("触发均衡压差", "V", TYPE_U32, conv_div1000),
+        20:  ("触发均衡压差", "V", TYPE_U32, conv_div1000 ,HA_SENSOR, "mdi:switch"),
         24:  ("SOC-100%电压", "V", TYPE_U32, conv_div1000),
         28:  ("SOC-0%电压", "V", TYPE_U32, conv_div1000),
         32:  ("推荐充电电压", "V", TYPE_U32, conv_div1000),
@@ -53,9 +58,9 @@ BMS_MAP = {
         100: ("MOS过温保护", "°C", TYPE_I32, conv_div10),
         104: ("MOS过温保护恢复", "°C", TYPE_I32, conv_div10),
         108: ("单体数量", "N", TYPE_U32, conv_none),
-        112: ("充电开关", "Bit", TYPE_U32, conv_none),
-        116: ("放电开关", "Bit", TYPE_U32, conv_none),
-        120: ("均衡开关", "Bit", TYPE_U32, conv_none),
+        112: ("充电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-charging" ),
+        116: ("放电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-arrow-down"),
+        120: ("均衡开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:scale-balance"),
         124: ("电池设计容量", "mAH", TYPE_U32, conv_none),
         128: ("短路保护延迟", "us", TYPE_U32, conv_none),
         132: ("均衡起始电压", "V", TYPE_U32, conv_div1000),
@@ -66,13 +71,11 @@ BMS_MAP = {
 #        144: ("Set: Wire Res 2", "uΩ", TYPE_U32, conv_none),
 #        148: ("Set: Wire Res 3", "uΩ", TYPE_U32, conv_none),
         # ... 中間省略 Wire Res 4-31 ...
-
-        264: ("设备地址", "Hex", TYPE_U32, conv_hex),
-        268: ("放电预充时间", "S", TYPE_U32, conv_none),
+        264: ("设备地址", "Hex", TYPE_U32, conv_hex, HA_SENSOR, "mdi:identifier"),
+        268: ("放电预充时间", "S", TYPE_U32, conv_none, HA_BINARY, "mdi:transit-connection-variant"),
         276: ("Func Bits", "Hex", TYPE_U16, conv_hex), # Heating, GPS, etc.
         280: ("智能休眠时间", "H", TYPE_U8, conv_none),
     },
-
     # =====================================================
     # 0x02: Realtime Data (Base 0x1200) - 即時監控數據
     # =====================================================
@@ -95,7 +98,6 @@ BMS_MAP = {
         28: ("15單體電壓", "V", TYPE_U16, conv_div1000),
         30: ("16單體電壓", "V", TYPE_U16, conv_div1000),
         # 假設只用到 16 串，若更多可繼續加 ...
-
         # --- Battery Stats ---
         64: ("电池状态", "Hex", TYPE_U32, conv_hex), # Which cells exist
         68: ("平均电压", "V", TYPE_U16, conv_div1000),
@@ -120,21 +122,21 @@ BMS_MAP = {
         158: ("电池温度2", "°C", TYPE_I16, conv_div10),
 
         # --- Alarms & Status ---
-        160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex), # 包含過壓、過流等報警
+        160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex ,HA_SENSOR, "mdi:switch"), # 包含過壓、過流等報警
         164: ("均衡电流", "mA", TYPE_I16, conv_none),
         166: ("均衡状态", "Enum", TYPE_U8, conv_none), # 0:Off, 1:Chg, 2:Dchg
-        167: ("剩余电量", "%", TYPE_U8, conv_none),
+        167: ("剩余电量", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery"),
         168: ("剩余容量", "Ah", TYPE_I32, conv_div1000),
         172: ("电池实际容量", "Ah", TYPE_U32, conv_div1000),
         176: ("循环次数", "N", TYPE_U32, conv_none),
         180: ("循环总容量", "Ah", TYPE_U32, conv_div1000),
         184: ("SOH估值", "%", TYPE_U8, conv_none),
         185: ("预充状态", "Bit", TYPE_U8, conv_none),
-        186: ("用户层报警", "Hex", TYPE_U16, conv_hex),
+        186: ("用户层报警", "Hex", TYPE_U16, conv_hex ,HA_SENSOR, "mdi:switch"),
         188: ("运行时间", "S", TYPE_U32, conv_none),
         192: ("充电状态", "Hex", TYPE_U16, conv_hex), # High byte/Low byte mix
         193: ("放电状态", "Hex", TYPE_U16, conv_hex), # High byte/Low byte mix
-        194: ("用户层报警2", "Hex", TYPE_U16, conv_hex),
+        194: ("用户层报警2", "Hex", TYPE_U16, conv_hex ,HA_SENSOR, "mdi:switch"),
 
         # --- Protection Release Times ---
         196: ("放电过流保护解除时间", "S", TYPE_U16, conv_none),
@@ -149,7 +151,7 @@ BMS_MAP = {
         212: ("应急开关时间", "S", TYPE_U16, conv_none),
 
         # --- Calibration/Other ---
-        240: ("系统节拍", "0.1S", TYPE_U32, conv_none),
+        240: ("SysRunTicks", "0.1S", TYPE_U32, conv_none),
         248: ("电池温度3", "°C", TYPE_I16, conv_div10),
         250: ("电池温度4", "°C", TYPE_I16, conv_div10),
         252: ("电池温度5", "°C", TYPE_I16, conv_div10),

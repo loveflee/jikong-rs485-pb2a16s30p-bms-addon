@@ -14,6 +14,7 @@ OUT_CONFIG="/data/config.yaml"
 
 if [ ! -f "${OPTIONS_FILE}" ]; then
   echo "❌ options.json not found at ${OPTIONS_FILE}"
+  ls -l /data || true
   exit 1
 fi
 
@@ -41,6 +42,6 @@ EOF
 
 echo "✅ Generated ${OUT_CONFIG}:"
 cat "${OUT_CONFIG}"
-cat /data/config.yaml
+
 # 啟動應用
 exec python /app/main.py

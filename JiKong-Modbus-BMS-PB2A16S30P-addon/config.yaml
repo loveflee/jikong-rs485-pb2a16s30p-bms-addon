@@ -27,7 +27,7 @@ options:
   mqtt_client_id: "jk_bms_monitor"
 
   packet_expire_time: 0.4
-  settings_publish_interval: 1800
+  settings_publish_interval: 60
 
 schema:
   modbus_host: str

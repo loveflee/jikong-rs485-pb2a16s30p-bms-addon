@@ -74,8 +74,6 @@ class MqttPublisher:
         node_id = f"jk_bms_{device_id}"
         return f"{self.discovery_prefix}/binary_sensor/{node_id}/{object_id}/config"
 
-# publisher.py
-
     def publish_discovery_for_packet_type(self, device_id: int, packet_type: int, data_map: Dict[int, Any]):
         """
         Publish discovery for all registers in a packet_type.
@@ -94,10 +92,10 @@ class MqttPublisher:
             entry = data_map[offset]
             
             # --- 1. 解析擴充後的 Tuple 結構 ---
-            # 預設值
+            # 使用索引讀取，避免解包錯誤
             name = entry[0]
             unit = entry[1]
-            # entry[2] 是 dtype, entry[3] 是 converter (這裡用不到)
+            # entry[2] 是 dtype, entry[3] 是 converter
             
             # 讀取第 5 個元素 (HA Type)，若無則預設為 sensor
             ha_type = entry[4] if len(entry) > 4 else "sensor"
@@ -123,15 +121,13 @@ class MqttPublisher:
             # --- 3. 分類處理: Binary Sensor vs Sensor ---
             if ha_type == "binary_sensor":
                 # 二進制傳感器邏輯
-                # 假設數據是 1=ON, 0=OFF (BMS原始數據通常是 1/0)
                 payload["payload_on"] = "1"
                 payload["payload_off"] = "0"
                 
-                # 設定 Value Template：如果 JSON 裡是 boolean (True/False) 或是 1/0
-                # 下面的 template 兼容數字 1 和 boolean True
-                payload["value_template"] = f"{{{{ 1 if value_json['{value_key}'] in (1, True, '1') else 0 }}}}"
+                # 設定 Value Template：兼容數字 1/0 和 boolean True/False
+                # 注意：這裡處理了 0x01 的 Bit 類型(返回1/0) 和 0x02 解析出來的 Bool(True/False)
+                payload["value_template"] = f"{{{{ 1 if value_json['{value_key}'] in (1, True, '1', 'ON') else 0 }}}}"
                 
-                # 取得 binary_sensor 的 topic
                 topic = self._binary_sensor_discovery_topic(device_id, object_id)
                 
             else:
@@ -142,7 +138,6 @@ class MqttPublisher:
                 if unit and unit not in ("Hex", "Bit", "Enum"):
                     payload["unit_of_measurement"] = unit
                 
-                # 取得 sensor 的 topic
                 topic = self._sensor_discovery_topic(device_id, object_id)
 
             # --- 4. 發送 MQTT Discovery ---
@@ -151,37 +146,7 @@ class MqttPublisher:
             except Exception as e:
                 print(f"❌ publish discovery {ha_type} failed: {e}")
 
-        # 注意：原本寫死在這裡的 '放电开关' 和 '充电开关' 的程式碼區塊現在可以刪除了，
-        # 因為它們已經透過 map (offset 112, 116) 統一處理了。
-
-        # also add binary sensors for charge/discharge switches (if relevant)
-        # Discharge switch
-        bs_payload = {
-            "name": f"放电开关",
-            "unique_id": f"jk_bms_{device_id}_discharge_switch",
-            "state_topic": state_topic,
-            "value_template": "{{ 'ON' if value_json['放电开关'] == True else 'OFF' }}",
-            "device_class": "power",
-            "device": device_info
-        }
-        try:
-            self.client.publish(self._binary_sensor_discovery_topic(device_id, "discharge_switch"), json.dumps(bs_payload), retain=True)
-        except Exception as e:
-            print(f"❌ publish discharge bs failed: {e}")
-
-        # Charge switch
-        cs_payload = {
-            "name": f"充电开关",
-            "unique_id": f"jk_bms_{device_id}_charge_switch",
-            "state_topic": state_topic,
-            "value_template": "{{ 'ON' if value_json['充电开关'] == True else 'OFF' }}",
-            "device_class": "power",
-            "device": device_info
-        }
-        try:
-            self.client.publish(self._binary_sensor_discovery_topic(device_id, "charge_switch"), json.dumps(cs_payload), retain=True)
-        except Exception as e:
-            print(f"❌ publish charge bs failed: {e}")
+        # 【重要】刪除了下方原本寫死的充放電開關程式碼，避免重複發送
 
     def process_and_publish(self, data_packet: bytes, device_id: int, packet_type: int):
         if packet_type not in BMS_MAP:
@@ -195,10 +160,21 @@ class MqttPublisher:
         payload_dict: Dict[str, Any] = {}
 
         for offset in sorted(register_def.keys()):
-            name, unit, dtype, converter = register_def[offset]
+            # 【修正重點】: 不使用直接解包 (a,b,c,d = val)，改用切片或索引
+            entry = register_def[offset]
+            name = entry[0]
+            # unit = entry[1] # 這裡用不到
+            dtype = entry[2]
+            converter = entry[3]
+
+            # 計算絕對偏移量
             abs_offset = base_index + offset
+            
+            # 如果 offset 很大（例如 9001），會超過封包長度，這裡會自動跳過讀取
+            # 這正是我們想要的（因為 9001 是虛擬的，稍後手動賦值）
             if abs_offset >= len(data_packet):
                 continue
+
             raw_val = self.get_value(data_packet, abs_offset, dtype)
             if raw_val is not None:
                 try:
@@ -208,12 +184,15 @@ class MqttPublisher:
                 payload_dict[name] = final_val
 
         # extra: parse common bit fields into clear booleans/labels
+        # 手動解析開關狀態 (對應 0x02 的虛擬 ID 9001, 9002)
+        
         # 放电状态
         discharge_val = payload_dict.get("放电状态")
         if isinstance(discharge_val, str) and discharge_val.startswith("0x"):
             try:
                 raw = int(discharge_val, 16)
-                payload_dict["放电开关"] = (raw & 0x1) == 1
+                # 將結果存入字典，key 必須對應 bms_registers 裡的 Name
+                payload_dict["放电开关"] = (raw & 0x1) == 1 
             except Exception:
                 pass
 

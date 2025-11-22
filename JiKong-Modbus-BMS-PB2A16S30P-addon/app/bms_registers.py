@@ -158,5 +158,7 @@ BMS_MAP = {
         256: ("RTC计数器", "Tick", TYPE_U32, conv_none),
         264: ("进入休眠时间", "S", TYPE_U32, conv_none),
         268: ("并联限流模块状态", "Bit", TYPE_U8, conv_none),
+        9001: ("充电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging"),
+        9002: ("放电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-arrow-down")
     }
 }

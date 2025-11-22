@@ -18,12 +18,12 @@ options:
   modbus_timeout: 10
   modbus_buffer_size: 4096
 
-  mqtt_host: "homeassistant ip"
+  mqtt_host: "core-mosquitto" # homeassistant ip
   mqtt_port: 1883
   mqtt_username: "mqtt user"
   mqtt_password: "mqtt password"
   mqtt_discovery_prefix: "homeassistant"
-  mqtt_topic_prefix: "Jikong BMS"
+  mqtt_topic_prefix: "Jikong_BMS"
   mqtt_client_id: "jk_bms_monitor"
 
   packet_expire_time: 0.4

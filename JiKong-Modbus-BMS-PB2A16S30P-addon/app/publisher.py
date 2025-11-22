@@ -74,10 +74,12 @@ class MqttPublisher:
         node_id = f"jk_bms_{device_id}"
         return f"{self.discovery_prefix}/binary_sensor/{node_id}/{object_id}/config"
 
+# publisher.py
+
     def publish_discovery_for_packet_type(self, device_id: int, packet_type: int, data_map: Dict[int, Any]):
         """
         Publish discovery for all registers in a packet_type.
-        Only publish once per (device_id, packet_type).
+        Based on the extended definition in BMS_MAP.
         """
         key = (device_id, packet_type)
         if key in self._published_discovery:
@@ -87,28 +89,70 @@ class MqttPublisher:
         device_info = self._make_device_info(device_id)
         state_topic = f"{self.topic_prefix}/{device_id}/realtime" if packet_type == 0x02 else f"{self.topic_prefix}/{device_id}/settings"
 
-        # publish sensors
+        # 遍歷 MAP 定義
         for offset in sorted(data_map.keys()):
-            name, unit, dtype, _ = data_map[offset]
+            entry = data_map[offset]
+            
+            # --- 1. 解析擴充後的 Tuple 結構 ---
+            # 預設值
+            name = entry[0]
+            unit = entry[1]
+            # entry[2] 是 dtype, entry[3] 是 converter (這裡用不到)
+            
+            # 讀取第 5 個元素 (HA Type)，若無則預設為 sensor
+            ha_type = entry[4] if len(entry) > 4 else "sensor"
+            # 讀取第 6 個元素 (Icon)，若無則為 None
+            icon = entry[5] if len(entry) > 5 else None
+
             object_id = f"reg_{packet_type}_{offset}"
             unique_id = f"jk_bms_{device_id}_{packet_type}_{offset}"
             value_key = name
 
+            # --- 2. 建構共用 Payload ---
             payload = {
-                "name": f"{name}",
+                "name": name,
                 "unique_id": unique_id,
                 "state_topic": state_topic,
-                "value_template": f"{{{{ value_json['{value_key}'] }}}}",
                 "device": device_info,
             }
-            if unit not in ("Hex", "Bit", "Enum") and unit:
-                payload["unit_of_measurement"] = unit
+            
+            # 加入 Icon (如果有定義)
+            if icon:
+                payload["icon"] = icon
 
-            topic = self._sensor_discovery_topic(device_id, object_id)
+            # --- 3. 分類處理: Binary Sensor vs Sensor ---
+            if ha_type == "binary_sensor":
+                # 二進制傳感器邏輯
+                # 假設數據是 1=ON, 0=OFF (BMS原始數據通常是 1/0)
+                payload["payload_on"] = "1"
+                payload["payload_off"] = "0"
+                
+                # 設定 Value Template：如果 JSON 裡是 boolean (True/False) 或是 1/0
+                # 下面的 template 兼容數字 1 和 boolean True
+                payload["value_template"] = f"{{{{ 1 if value_json['{value_key}'] in (1, True, '1') else 0 }}}}"
+                
+                # 取得 binary_sensor 的 topic
+                topic = self._binary_sensor_discovery_topic(device_id, object_id)
+                
+            else:
+                # 一般傳感器邏輯
+                payload["value_template"] = f"{{{{ value_json['{value_key}'] }}}}"
+                
+                # 處理單位
+                if unit and unit not in ("Hex", "Bit", "Enum"):
+                    payload["unit_of_measurement"] = unit
+                
+                # 取得 sensor 的 topic
+                topic = self._sensor_discovery_topic(device_id, object_id)
+
+            # --- 4. 發送 MQTT Discovery ---
             try:
                 self.client.publish(topic, json.dumps(payload), retain=True)
             except Exception as e:
-                print(f"❌ publish discovery sensor failed: {e}")
+                print(f"❌ publish discovery {ha_type} failed: {e}")
+
+        # 注意：原本寫死在這裡的 '放电开关' 和 '充电开关' 的程式碼區塊現在可以刪除了，
+        # 因為它們已經透過 map (offset 112, 116) 統一處理了。
 
         # also add binary sensors for charge/discharge switches (if relevant)
         # Discharge switch

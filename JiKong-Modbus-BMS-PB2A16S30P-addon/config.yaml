@@ -8,36 +8,47 @@ arch:
   - amd64
   - armv7
   - aarch64
-startup: services          # 跟隨 HA 服務啟動
-boot: auto                 # HA 開機時自動啟動
+startup: services
+boot: auto
 
 # ✅ 可以在 HA UI 修改的參數（會寫到 /data/options.json）
 options:
-  modbus_host: "modbus_gatway_ip"   # 串口伺服器 / MPPT Modbus TCP Server IP
-  modbus_port: 502                # Modbus TCP port
+options:
+  modbus_host: "modbus_gatway_ip"
+  modbus_port: 502
+  modbus_timeout: 10
+  modbus_buffer_size: 4096
 
   mqtt_host: "core-mosquitto"      # MQTT Broker IP（通常就是 HA 的 IP）
   mqtt_port: 1883
   mqtt_username: "add new user in ha"
   mqtt_password: "only Local network can login"
-  mqtt_discovery_prefix: "homeassistant"  
-  mqtt_topic_prefix: "JiKong_bms"
+  mqtt_discovery_prefix: "homeassistant"
+  mqtt_topic_prefix: "JiKong_BMS"
+  mqtt_client_id: "jk_bms_monitor"
 
   packet_expire_time: 0.4
   settings_publish_interval: 1800
 # ✅ options 型別定義（HA UI 驗證用）schema:
 schema:
-  tcp_host: str
-  tcp_port: int
-  tcp_timeout: int
+  modbus_host: str
+  modbus_port: int
+  modbus_timeout: int
+  modbus_buffer_size: int
+
   mqtt_host: str
   mqtt_port: int
   mqtt_username: str
   mqtt_password: str
   mqtt_discovery_prefix: str
   mqtt_topic_prefix: str
+  mqtt_client_id: str
+
   packet_expire_time: float
   settings_publish_interval: int
+
+# 若需要讓容器使用 host network（直接存取本機網路），可啟用此行
+# host_network: true
 ports: {}
 map:
   - type: addon_config

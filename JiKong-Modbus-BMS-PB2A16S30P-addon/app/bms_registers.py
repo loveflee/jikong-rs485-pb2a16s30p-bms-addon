@@ -136,7 +136,7 @@ BMS_MAP = {
 #        186: ("用户层报警", "Hex", TYPE_U16, conv_hex , HA_BINARY, "mdi:switch"),
         188: ("运行时间", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         192: ("充电状态", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"), # High byte/Low byte mix
-        193: ("放电状态", "Hex", TYPE_U16, conv_hex), # High byte/Low byte mix
+#        193: ("放电状态", "Hex", TYPE_U16, conv_hex), # High byte/Low byte mix
 #        194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"),
 
         # --- Protection Release Times ---

@@ -42,12 +42,12 @@ BMS_MAP = {
         36:  ("浮充电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         40:  ("自动关机电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         44:  ("持续充电电流", "A", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:current-dc"),
-        48:  ("充电过流保护延迟", "S", TYPE_U32, conv_none),
-        52:  ("充电过流保护解除", "S", TYPE_U32, conv_none),
+        48:  ("充电过流保护延迟", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
+        52:  ("充电过流保护解除", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         56:  ("持续放电电流", "A", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:current-dc"),
-        60:  ("放电过流保护延迟", "S", TYPE_U32, conv_none),
-        64:  ("放电过流保护解除", "S", TYPE_U32, conv_none),
-        68:  ("短路保护解除", "S", TYPE_U32, conv_none),
+        60:  ("放电过流保护延迟", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
+        64:  ("放电过流保护解除", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
+        68:  ("短路保护解除", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         72:  ("最大均衡电流", "mA", TYPE_U32, conv_none, HA_SENSOR, "mdi:current-dc"),
         76:  ("充电过温保护", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         80:  ("充电过温恢复", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
@@ -62,7 +62,7 @@ BMS_MAP = {
         116: ("放电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-arrow-down"),
         120: ("均衡开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:scale-balance"),
         124: ("电池设计容量", "mAH", TYPE_U32, conv_none, HA_SENSOR, "mdi:current-dc"),
-        128: ("短路保护延迟", "us", TYPE_U32, conv_none),
+        128: ("短路保护延迟", "us", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         132: ("均衡起始电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         # 136 (0x88) - 260 (0x104): Connection Line Resistance (32組)
         # 為了不洗版，這裡僅列出前4組，如果需要全部可解開迴圈
@@ -113,13 +113,13 @@ BMS_MAP = {
         # ... 這裡還有很多組，為版面整潔只列出前幾組 ...
 
         # --- Temps & Power ---
-        138: ("功率板温度", "°C", TYPE_I16, conv_div10),
+        138: ("功率板温度", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         140: ("均衡线电阻状态", "Hex", TYPE_U32, conv_hex),
         144: ("电池总电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         148: ("电池功率", "W", TYPE_U32, conv_div1000),
         152: ("电池电流", "A", TYPE_I32, conv_div1000),
-        156: ("电池温度1", "°C", TYPE_I16, conv_div10),
-        158: ("电池温度2", "°C", TYPE_I16, conv_div10),
+        156: ("电池温度1", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
+        158: ("电池温度2", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
 
         # --- Alarms & Status ---
         160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex ,HA_SENSOR, "mdi:switch"), # 包含過壓、過流等報警

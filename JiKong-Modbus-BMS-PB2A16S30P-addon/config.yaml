@@ -33,7 +33,7 @@ options:
 
   # RS485 USB 參數
   serial_device: "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
-  serial_baudrate: 9600
+  serial_baudrate: 115200
 
   # MQTT 參數
   mqtt_host: "core-mosquitto" # homeassistant ip / 內建 broker

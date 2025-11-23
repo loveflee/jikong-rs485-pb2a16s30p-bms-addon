@@ -154,7 +154,7 @@ BMS_MAP = {
         240: ("SysRunTicks", "0.1S", TYPE_U32, conv_none),
         248: ("电池温度3", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         250: ("电池温度4", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
-        252: ("电池温度5", "°C", TYPE_I16, conv_div10), HA_SENSOR, "mdi:temperature-celsius",
+        252: ("电池温度5", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius",
         256: ("RTC计数器", "Tick", TYPE_U32, conv_none, HA_SENSOR, "mdi:numeric"),
         264: ("进入休眠时间", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:sleeo"),
         268: ("并联限流模块状态", "Bit", TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging"),

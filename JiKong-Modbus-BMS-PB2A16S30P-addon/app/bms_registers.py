@@ -102,8 +102,9 @@ BMS_MAP = {
         64: ("电池状态", "Hex", TYPE_U32, conv_hex, HA_BINARY, "mdi:switch"), # Which cells exist
         68: ("平均电压", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         70: ("最大压差", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
-        72: ("最大單體", "S", TYPE_U8, conv_plus1, HA_SENSOR, "mdi:numeric"),
-        73: ("最小單體", "S", TYPE_U8, conv_plus1, HA_SENSOR, "mdi:numeric"), # Offset 72 is U8(Max), next byte is Min
+        # 將單位 "S" 改為 None，圖標建議用 mdi:format-list-numbered 或 mdi:numeric
+        72: ("最大單體", None, TYPE_U8, conv_plus1, HA_SENSOR, "mdi:format-list-numbered"),
+        73: ("最小單體", None, TYPE_U8, conv_plus1, HA_SENSOR, "mdi:format-list-numbered"), # Offset 72 is U8(Max), next byte is Min
 
         # --- Balance Wire Resistances (0x4A - 0x88) ---
 #        74: ("Wire Res 0", "mΩ", TYPE_U16, conv_none),

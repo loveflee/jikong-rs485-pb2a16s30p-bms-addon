@@ -102,8 +102,8 @@ BMS_MAP = {
         64: ("电池状态", "Hex", TYPE_U32, conv_hex), # Which cells exist
         68: ("平均电压", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         70: ("最大压差", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
-        72: ("最大單體", "None", TYPE_U8, conv_plus1, HA_SENSOR, "mdi:numeric"),
-        73: ("最小單體", "None", TYPE_U8, conv_plus1, HA_SENSOR, "mdi:numeric"), # Offset 72 is U8(Max), next byte is Min
+        72: ("最大單體", "", TYPE_U8, conv_plus1, HA_SENSOR, "mdi:numeric"),
+        73: ("最小單體", "", TYPE_U8, conv_plus1, HA_SENSOR, "mdi:numeric"), # Offset 72 is U8(Max), next byte is Min
 
         # --- Balance Wire Resistances (0x4A - 0x88) ---
 #        74: ("Wire Res 0", "mΩ", TYPE_U16, conv_none),
@@ -128,12 +128,12 @@ BMS_MAP = {
         167: ("剩余电量", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery"),
         168: ("剩余容量", "Ah", TYPE_I32, conv_div1000, HA_SENSOR, "mdi:battery"),
         172: ("电池实际容量", "Ah", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:battery"),
-        176: ("循环次数", "N", TYPE_U32, conv_none, HA_SENSOR, "mdi:battery),
-        180: ("循环总容量", "Ah", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:battery),
-        184: ("SOH估值", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery),
+        176: ("循环次数", "N", TYPE_U32, conv_none, HA_SENSOR, "mdi:battery"),
+        180: ("循环总容量", "Ah", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:battery"),
+        184: ("SOH估值", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery"),
         185: ("预充状态", "Bit", TYPE_U8, conv_none),
         186: ("用户层报警", "Hex", TYPE_U16, conv_hex , HA_BINARY, "mdi:switch"),
-        188: ("运行时间", "S", TYPE_U32, conv_none),
+        188: ("运行时间", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         192: ("充电状态", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"), # High byte/Low byte mix
         193: ("放电状态", "Hex", TYPE_U16, conv_hex), # High byte/Low byte mix
         194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"),
@@ -148,10 +148,10 @@ BMS_MAP = {
 
         # --- Missing Sensors ---
         208: ("Sensor Status", "Hex", TYPE_U16, conv_hex),
-        212: ("应急开关时间", "S", TYPE_U16, conv_none),
+        212: ("应急开关时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
 
         # --- Calibration/Other ---
-        240: ("SysRunTicks", "0.1S", TYPE_U32, conv_none),
+        240: ("SysRunTicks", "0.1S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         248: ("电池温度3", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         250: ("电池温度4", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         252: ("电池温度5", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),

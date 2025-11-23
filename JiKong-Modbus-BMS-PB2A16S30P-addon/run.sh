@@ -1,46 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "📦 JK BMS TCP Monitor Add-on starting..."
-
-# 必要工具檢查 (jq)
-if ! command -v jq >/dev/null 2>&1; then
-  echo "❌ jq not found"
-  exit 1
-fi
+echo "📦 JiKong RS485 PB2A16S30P BMS Add-on starting..."
 
 OPTIONS_FILE="/data/options.json"
 OUT_CONFIG="/data/config.yaml"
 
 if [ ! -f "${OPTIONS_FILE}" ]; then
-  echo "❌ options.json not found at ${OPTIONS_FILE}"
+  echo "❌ options.json 不存在: ${OPTIONS_FILE}"
   exit 1
 fi
 
-# 產生 /data/config.yaml 給應用程式使用
+# 讀 options.json，轉成內部 config.yaml
+echo "📝 產生 /data/config.yaml ..."
+
 cat > "${OUT_CONFIG}" <<EOF
 tcp:
-  host: "$(jq -r '.modbus_host // empty' ${OPTIONS_FILE})"
-  port: $(jq -r '.modbus_port // 502' ${OPTIONS_FILE})
-  timeout: $(jq -r '.modbus_timeout // 10' ${OPTIONS_FILE})
-  buffer_size: $(jq -r '.modbus_buffer_size // 4096' ${OPTIONS_FILE})
+  host: $(jq -r '.modbus_host' "${OPTIONS_FILE}")
+  port: $(jq -r '.modbus_port' "${OPTIONS_FILE}")
+  timeout: $(jq -r '.modbus_timeout' "${OPTIONS_FILE}")
+  buffer_size: $(jq -r '.modbus_buffer_size' "${OPTIONS_FILE}")
 
 mqtt:
-  broker: "$(jq -r '.mqtt_host // empty' ${OPTIONS_FILE})"
-  port: $(jq -r '.mqtt_port // 1883' ${OPTIONS_FILE})
-  username: "$(jq -r '.mqtt_username // empty' ${OPTIONS_FILE})"
-  password: "$(jq -r '.mqtt_password // empty' ${OPTIONS_FILE})"
-  discovery_prefix: "$(jq -r '.mqtt_discovery_prefix // "homeassistant"' ${OPTIONS_FILE})"
-  topic_prefix: "$(jq -r '.mqtt_topic_prefix // "bms"' ${OPTIONS_FILE})"
-  client_id: "$(jq -r '.mqtt_client_id // "jk_bms_monitor"' ${OPTIONS_FILE})"
+  broker: $(jq -r '.mqtt_host' "${OPTIONS_FILE}")
+  port: $(jq -r '.mqtt_port' "${OPTIONS_FILE}")
+  username: $(jq -r '.mqtt_username' "${OPTIONS_FILE}")
+  password: $(jq -r '.mqtt_password' "${OPTIONS_FILE}")
+  discovery_prefix: $(jq -r '.mqtt_discovery_prefix' "${OPTIONS_FILE}")
+  topic_prefix: $(jq -r '.mqtt_topic_prefix' "${OPTIONS_FILE}")
+  client_id: $(jq -r '.mqtt_client_id' "${OPTIONS_FILE}")
+
+serial:
+  device: "/dev/ttyUSB0"     # 你可以之後在 options.json 補這一項
+  baudrate: 9600             # 視 BMS / Gateway 設定調整
+  timeout: 1.0
 
 app:
-  packet_expire_time: $(jq -r '.packet_expire_time // 0.4' ${OPTIONS_FILE})
-  settings_publish_interval: $(jq -r '.settings_publish_interval // 1800' ${OPTIONS_FILE})
+  packet_expire_time: $(jq -r '.packet_expire_time' "${OPTIONS_FILE}")
+  settings_publish_interval: $(jq -r '.settings_publish_interval' "${OPTIONS_FILE}")
+
+  # 以下三個先給預設值，之後你可在 Add-on options/schema 補上
+  use_modbus_gateway: true     # true: 走 TCP Modbus Gateway
+  use_rs485_usb: false         # true: 直接讀 RS485 USB
+  debug_raw_log: false         # true: 啟用 raw hexdump 除錯
 EOF
 
-echo "✅ Generated ${OUT_CONFIG}:"
+echo "✅ /data/config.yaml 產生完成："
 cat "${OUT_CONFIG}"
 
-# 啟動應用
-exec python /app/main.py
+echo "🚀 啟動主程式 main.py ..."
+exec python3 /app/main.py

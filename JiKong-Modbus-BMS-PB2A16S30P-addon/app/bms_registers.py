@@ -122,21 +122,21 @@ BMS_MAP = {
         158: ("电池温度2", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
 
         # --- Alarms & Status ---
-        160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex ,HA_SENSOR, "mdi:switch"), # 包含過壓、過流等報警
+        160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex , HA_SENSOR, "mdi:switch"), # 包含過壓、過流等報警
         164: ("均衡电流", "mA", TYPE_I16, conv_none),
         166: ("均衡状态", "Enum", TYPE_U8, conv_none), # 0:Off, 1:Chg, 2:Dchg
         167: ("剩余电量", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery"),
-        168: ("剩余容量", "Ah", TYPE_I32, conv_div1000),
-        172: ("电池实际容量", "Ah", TYPE_U32, conv_div1000),
-        176: ("循环次数", "N", TYPE_U32, conv_none),
-        180: ("循环总容量", "Ah", TYPE_U32, conv_div1000),
-        184: ("SOH估值", "%", TYPE_U8, conv_none),
+        168: ("剩余容量", "Ah", TYPE_I32, conv_div1000, HA_SENSOR, "mdi:battery"),
+        172: ("电池实际容量", "Ah", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:battery"),
+        176: ("循环次数", "N", TYPE_U32, conv_none, HA_SENSOR, "mdi:battery),
+        180: ("循环总容量", "Ah", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:battery),
+        184: ("SOH估值", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery),
         185: ("预充状态", "Bit", TYPE_U8, conv_none),
-        186: ("用户层报警", "Hex", TYPE_U16, conv_hex ,HA_SENSOR, "mdi:switch"),
+        186: ("用户层报警", "Hex", TYPE_U16, conv_hex , HA_BINARY, "mdi:switch"),
         188: ("运行时间", "S", TYPE_U32, conv_none),
-        192: ("充电状态", "Hex", TYPE_U16, conv_hex), # High byte/Low byte mix
+        192: ("充电状态", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"), # High byte/Low byte mix
         193: ("放电状态", "Hex", TYPE_U16, conv_hex), # High byte/Low byte mix
-        194: ("用户层报警2", "Hex", TYPE_U16, conv_hex ,HA_SENSOR, "mdi:switch"),
+        194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"),
 
         # --- Protection Release Times ---
         196: ("放电过流保护解除时间", "S", TYPE_U16, conv_none),

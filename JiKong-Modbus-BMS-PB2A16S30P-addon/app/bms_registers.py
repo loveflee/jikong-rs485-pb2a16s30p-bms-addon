@@ -57,7 +57,7 @@ BMS_MAP = {
         96:  ("充电低温恢复", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         100: ("MOS过温保护", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         104: ("MOS过温保护恢复", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
-        108: ("单体数量", "None", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
+        108: ("单体数量", None, TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         112: ("充电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-charging" ),
         116: ("放电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-arrow-down"),
         120: ("均衡开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:scale-balance"),

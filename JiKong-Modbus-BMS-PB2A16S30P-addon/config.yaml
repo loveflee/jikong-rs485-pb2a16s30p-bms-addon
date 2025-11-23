@@ -1,7 +1,7 @@
 name: "JiKong Rs485 PB2A16S30P BMS"
 version: "1.0.1"
 slug: "jikong_rs485_pb2a16s30p_bms"
-description: "透過 Modbus gateway 讀取 jikong pb2a16s30p BMS 資料並發佈到 MQTT，供 Home Assistant 使用。"
+description: "透過 Modbus gateway 或 RS485 讀取 jikong pb2a16s30p BMS 資料並發佈到 MQTT，供 Home Assistant 使用。"
 url: "https://github.com/loveflee/jikong-rs485-pb2a16s30p-bms-addon"
 documentation: "https://github.com/loveflee/jikong-rs485-pb2a16s30p-bms-addon"
 arch:
@@ -11,21 +11,20 @@ arch:
 startup: services
 boot: auto
 
-app:
-  use_modbus_gateway: true      # 使用 TCP Modbus Gateway
-  use_rs485_usb: false          # 使用 RS485 to USB (/dev/ttyUSB0...)
-  debug_raw_log: false          # 啟用 logs 模式：印 raw hexdump
 # Add-on options（會出現在 HA UI）
 options:
-  use_modbus_gateway: true
-  use_rs485_usb: false
-  debug_raw_log: false
+  # 模式切換
+  use_modbus_gateway: true     # true: 用 TCP Modbus Gateway
+  use_rs485_usb: false         # true: 用 RS485 to USB (/dev/ttyUSB0...)
+  debug_raw_log: false         # true: 在 main.py 裡印 raw hexdump
 
+  # Modbus gateway (TCP) 設定
   modbus_host: "modbus gateway ip"
   modbus_port: 502
   modbus_timeout: 10
   modbus_buffer_size: 4096
 
+  # MQTT 設定
   mqtt_host: "core-mosquitto" # homeassistant ip
   mqtt_port: 1883
   mqtt_username: "mqtt user"
@@ -34,6 +33,7 @@ options:
   mqtt_topic_prefix: "Jikong_BMS"
   mqtt_client_id: "jk_bms_monitor"
 
+  # APP 行為設定
   packet_expire_time: 0.4
   settings_publish_interval: 60
 

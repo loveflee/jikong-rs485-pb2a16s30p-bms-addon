@@ -142,7 +142,7 @@ class Rs485Transport(BaseTransport):
             return
 
         device = self.serial_cfg.get("device", "/dev/ttyUSB0")
-        baudrate = int(self.serial_cfg.get("baudrate", 9600))
+        baudrate = int(self.serial_cfg.get("baudrate", 115200))
         timeout = float(self.serial_cfg.get("timeout", 1.0))
 
         while True:
@@ -218,3 +218,4 @@ def create_transport() -> BaseTransport:
     else:
         print("⚠️ 未啟用任何 transport（use_modbus_gateway / use_rs485_usb 都是 false），預設使用 TCP。")
         return TcpTransport(cfg)
+

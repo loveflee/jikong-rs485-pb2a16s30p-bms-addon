@@ -31,18 +31,19 @@ mqtt:
   client_id: $(jq -r '.mqtt_client_id' "${OPTIONS_FILE}")
 
 serial:
-  device: "/dev/ttyUSB0"     # 你可以之後在 options.json 補這一項
-  baudrate: 9600             # 視 BMS / Gateway 設定調整
+  # 目前先寫死，如果之後要從 Add-on options 調整，可以再把 device/baudrate 放到 options/schema
+  device: "/dev/ttyUSB0"
+  baudrate: 9600
   timeout: 1.0
 
 app:
   packet_expire_time: $(jq -r '.packet_expire_time' "${OPTIONS_FILE}")
   settings_publish_interval: $(jq -r '.settings_publish_interval' "${OPTIONS_FILE}")
 
-  # 以下三個先給預設值，之後你可在 Add-on options/schema 補上
-  use_modbus_gateway: true     # true: 走 TCP Modbus Gateway
-  use_rs485_usb: false         # true: 直接讀 RS485 USB
-  debug_raw_log: false         # true: 啟用 raw hexdump 除錯
+  # 這三個直接吃 Add-on options 的值
+  use_modbus_gateway: $(jq -r '.use_modbus_gateway' "${OPTIONS_FILE}")
+  use_rs485_usb: $(jq -r '.use_rs485_usb' "${OPTIONS_FILE}")
+  debug_raw_log: $(jq -r '.debug_raw_log' "${OPTIONS_FILE}")
 EOF
 
 echo "✅ /data/config.yaml 產生完成："

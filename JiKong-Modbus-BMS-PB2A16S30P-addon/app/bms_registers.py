@@ -57,11 +57,11 @@ BMS_MAP = {
         96:  ("充电低温恢复", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         100: ("MOS过温保护", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         104: ("MOS过温保护恢复", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
-        108: ("单体数量", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
+        108: ("单体数量", "None", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         112: ("充电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-charging" ),
         116: ("放电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-arrow-down"),
         120: ("均衡开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:scale-balance"),
-        124: ("电池设计容量", "mAH", TYPE_U32, conv_none, HA_SENSOR, "mdi:current-dc"),
+        124: ("电池设计容量", "mAH", TYPE_U32, conv_none, HA_SENSOR, "mdi:battery"),
         128: ("短路保护延迟", "us", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         132: ("均衡起始电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         # 136 (0x88) - 260 (0x104): Connection Line Resistance (32組)
@@ -72,8 +72,8 @@ BMS_MAP = {
 #        148: ("Set: Wire Res 3", "uΩ", TYPE_U32, conv_none),
         # ... 中間省略 Wire Res 4-31 ...
         264: ("设备地址", "Hex", TYPE_U32, conv_hex, HA_SENSOR, "mdi:identifier"),
-        268: ("放电预充时间", "S", TYPE_U32, conv_none, HA_BINARY, "mdi:transit-connection-variant"),
-        276: ("Func Bits", "Hex", TYPE_U16, conv_hex), # Heating, GPS, etc.
+#        268: ("放电预充时间", "S", TYPE_U32, conv_none, HA_BINARY, "mdi:transit-connection-variant"),
+#        276: ("Func Bits", "Hex", TYPE_U16, conv_hex), # Heating, GPS, etc.
         280: ("智能休眠时间", "H", TYPE_U8, conv_none, HA_SENSOR, "mdi:sleep"),
     },
     # =====================================================
@@ -99,7 +99,7 @@ BMS_MAP = {
         30: ("16單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         # 假設只用到 16 串，若更多可繼續加 ...
         # --- Battery Stats ---
-        64: ("电池状态", "Hex", TYPE_U32, conv_hex, HA_BINARY, "mdi:switch"), # Which cells exist
+#        64: ("电池状态", "Hex", TYPE_U32, conv_hex, HA_BINARY, "mdi:switch"), # Which cells exist
         68: ("平均电压", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         70: ("最大压差", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         # 將單位 "S" 改為 None，圖標建議用 mdi:format-list-numbered 或 mdi:numeric
@@ -115,7 +115,7 @@ BMS_MAP = {
 
         # --- Temps & Power ---
         138: ("功率板温度", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
-        140: ("均衡线电阻状态", "Hex", TYPE_U32, conv_hex),
+#        140: ("均衡线电阻状态", "Hex", TYPE_U32, conv_hex),
         144: ("电池总电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         148: ("电池功率", "W", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:lightning-bolt"),
         152: ("电池电流", "A", TYPE_I32, conv_div1000, HA_SENSOR, "mdi:current-dc"),
@@ -123,21 +123,21 @@ BMS_MAP = {
         158: ("电池温度2", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
 
         # --- Alarms & Status ---
-        160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex , HA_SENSOR, "mdi:switch"), # 包含過壓、過流等報警
+#        160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex , HA_SENSOR, "mdi:switch"), # 包含過壓、過流等報警
         164: ("均衡电流", "mA", TYPE_I16, conv_none, HA_SENSOR, "mdi:current-dc"),
-        166: ("均衡状态", "Enum", TYPE_U8, conv_none), # 0:Off, 1:Chg, 2:Dchg
+        166: ("均衡:1充2放", "Enum", TYPE_U8, conv_none, HA_SENSOR, "mdi:scale-balance"), # 0:Off, 1:Chg, 2:Dchg
         167: ("剩余电量", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery"),
         168: ("剩余容量", "Ah", TYPE_I32, conv_div1000, HA_SENSOR, "mdi:battery"),
         172: ("电池实际容量", "Ah", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:battery"),
         176: ("循环次数", "N", TYPE_U32, conv_none, HA_SENSOR, "mdi:battery"),
         180: ("循环总容量", "Ah", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:battery"),
-        184: ("SOH估值", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery"),
-        185: ("预充状态", "Bit", TYPE_U8, conv_none),
-        186: ("用户层报警", "Hex", TYPE_U16, conv_hex , HA_BINARY, "mdi:switch"),
+#        184: ("SOH估值", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery"),
+#        185: ("预充状态", "Bit", TYPE_U8, conv_none),
+#        186: ("用户层报警", "Hex", TYPE_U16, conv_hex , HA_BINARY, "mdi:switch"),
         188: ("运行时间", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         192: ("充电状态", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"), # High byte/Low byte mix
         193: ("放电状态", "Hex", TYPE_U16, conv_hex), # High byte/Low byte mix
-        194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"),
+#        194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"),
 
         # --- Protection Release Times ---
         196: ("放电过流保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
@@ -148,18 +148,18 @@ BMS_MAP = {
         206: ("单体过压保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
 
         # --- Missing Sensors ---
-        208: ("Sensor Status", "Hex", TYPE_U16, conv_hex),
+#        208: ("Sensor Status", "Hex", TYPE_U16, conv_hex),
         212: ("应急开关时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
 
         # --- Calibration/Other ---
-        240: ("SysRunTicks", "0.1S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
+#        240: ("SysRunTicks", "0.1S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         248: ("电池温度3", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         250: ("电池温度4", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         252: ("电池温度5", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
-        256: ("RTC计数器", "Tick", TYPE_U32, conv_none, HA_SENSOR, "mdi:numeric"),
+#        256: ("RTC计数器", "Tick", TYPE_U32, conv_none, HA_SENSOR, "mdi:numeric"),
         264: ("进入休眠时间", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:sleep"),
-        268: ("并联限流模块状态", "Bit", TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging"),
-        9001: ("充电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging"),
-        9002: ("放电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-arrow-down")
+#        268: ("并联限流模块状态", "Bit", TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging"),
+#        9001: ("充电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging"),
+#        9002: ("放电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-arrow-down")
     }
 }

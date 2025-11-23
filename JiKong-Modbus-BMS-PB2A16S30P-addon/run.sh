@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# run.sh
 set -euo pipefail
 
 echo "📦 JiKong RS485 PB2A16S30P BMS Add-on starting..."
@@ -11,7 +12,6 @@ if [ ! -f "${OPTIONS_FILE}" ]; then
   exit 1
 fi
 
-# 讀 options.json，轉成內部 config.yaml
 echo "📝 產生 /data/config.yaml ..."
 
 cat > "${OUT_CONFIG}" <<EOF

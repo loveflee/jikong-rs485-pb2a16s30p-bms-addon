@@ -117,7 +117,7 @@ BMS_MAP = {
         140: ("均衡线电阻状态", "Hex", TYPE_U32, conv_hex),
         144: ("电池总电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         148: ("电池功率", "W", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:lightning-bolt"),
-        152: ("电池电流", "A", TYPE_I32, conv_div1000 HA_SENSOR, "mdi:current-dc"),
+        152: ("电池电流", "A", TYPE_I32, conv_div1000, HA_SENSOR, "mdi:current-dc"),
         156: ("电池温度1", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         158: ("电池温度2", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
 

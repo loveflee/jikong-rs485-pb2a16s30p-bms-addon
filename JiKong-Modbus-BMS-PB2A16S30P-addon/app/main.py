@@ -1,148 +1,155 @@
 # main.py
-import socket
-import struct
-import time
-import yaml
+#
+# 流程：
+#   1. 讀 config.yaml
+#   2. 建立 transport (Modbus Gateway or RS485 USB)
+#   3. 建立 MQTT publisher
+#   4. 進入主迴圈：
+#        - transport.iter_packets() 取得 (pkt_type, packet)
+#        - 如果 pkt_type == 0x02 → 暫存 pending_realtime_packet
+#        - 如果 pkt_type == 0x01 →
+#              a. 解析 device_id
+#              b. decode 0x01 → dict → publish
+#              c. 若有 pending 0x02 且未過期 → decode 0x02 → publish
+#
+#   ⚠️ 你要求「0x02 綁定邏輯完整搬到 main.py」→ 已經放在這裡了。
+
 import os
 import sys
+import time
+import yaml
+from typing import Optional, Tuple
 
+from transport import create_transport, BaseTransport
+from decoder import extract_device_address, decode_packet_to_dict
 from publisher import get_publisher
 
-CONFIG_PATH = "/data/config.yaml"  # 由 run.sh 產生
 
-def extract_device_address(packet_0x01: bytes) -> int:
-    """
-    從 0x01 (Settings) 封包中提取 Device Address。
-    bms_registers 定義 offset 264（相對 payload），因此實際索引 = header(6) + 264 = 270
-    """
-    try:
-        print(f"📦 0x01 length = {len(packet_0x01)}")
-        if len(packet_0x01) >= 274:  # 270 + 4 bytes
-            raw = packet_0x01[270:274]
-            print(f"🔍 raw addr bytes @270-273 = {raw.hex(' ')}")
-            device_id = struct.unpack_from('<I', packet_0x01, 270)[0]
-            print(f"🔑 解析得到 device_id = {device_id} (hex {device_id:#x})")
-            return device_id
-        else:
-            print("⚠️ 0x01 封包長度不足 274，無法取設備地址")
-        return 0
-    except Exception as e:
-        print(f"❌ 提取設備地址失敗: {e}")
-        return 0
+CONFIG_PATH = "/data/config.yaml"
+
 
 def load_config():
     if not os.path.exists(CONFIG_PATH):
         print(f"❌ 找不到設定檔 {CONFIG_PATH}")
         sys.exit(1)
+
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+        cfg = yaml.safe_load(f) or {}
+
     tcp = cfg.get("tcp", {})
     mqtt = cfg.get("mqtt", {})
     app_cfg = cfg.get("app", {})
-    return tcp, mqtt, app_cfg
+    serial_cfg = cfg.get("serial", {})
+    return tcp, mqtt, app_cfg, serial_cfg
+
+
+def hexdump(prefix: str, data: bytes):
+    """
+    debug_raw_log 模式下用：把 raw 資料用 HEX 顯示。
+    """
+    hex_str = " ".join(f"{b:02X}" for b in data)
+    print(f"{prefix} RAW ({len(data)} bytes): {hex_str}")
+
 
 def main():
-    tcp_cfg, mqtt_cfg, app_cfg = load_config()
+    tcp_cfg, mqtt_cfg, app_cfg, serial_cfg = load_config()
 
-    TCP_HOST = tcp_cfg.get("host", "192.168.106.13")
-    TCP_PORT = int(tcp_cfg.get("port", 502))
-    SOCKET_TIMEOUT = int(tcp_cfg.get("timeout", 10))
-    BUFFER_SIZE = int(tcp_cfg.get("buffer_size", 4096))
     PACKET_EXPIRE_TIME = float(app_cfg.get("packet_expire_time", 0.4))
+    debug_raw_log = bool(app_cfg.get("debug_raw_log", False))
 
-    # 初始化 publisher（會建立 mqtt 連線）
-    publisher = get_publisher(config_path="/data/config.yaml")
+    # 建立 MQTT publisher（會建立 MQTT 連線）
+    publisher = get_publisher(config_path=CONFIG_PATH)
 
-    pending_realtime_packet = None
-    last_realtime_time = 0
+    # 建立 Transport（TCP 或 RS485 USB）
+    transport: BaseTransport = create_transport(tcp_cfg, serial_cfg, app_cfg)
+
+    pending_realtime_packet: Optional[bytes] = None
+    last_realtime_time: float = 0.0
 
     while True:
-        sock = None
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(SOCKET_TIMEOUT)
-            sock.connect((TCP_HOST, TCP_PORT))
-            print(f"✅ 已連線到 {TCP_HOST}:{TCP_PORT}，開始監聽 BMS 數據...")
+            print("🔌 開始建立連線並監聽 BMS 數據...")
+            transport.open()
+            print("✅ Transport 已開啟，開始收封包...")
 
-            buffer = bytearray()
+            # 這裡開始迴圈讀封包
+            for pkt_type, packet in transport.iter_packets():
+                # 如果有開除錯模式，就印出 raw hexdump
+                if debug_raw_log:
+                    hexdump(f"[pkt_type={hex(pkt_type)}]", packet)
 
-            while True:
-                try:
-                    chunk = sock.recv(1024)
-                    if not chunk:
-                        print("⚠️ 伺服器端已斷開連線")
-                        break
-
-                    buffer.extend(chunk)
-
-                    while True:
-                        header_index = buffer.find(b'\x55\xAA\xEB\x90')
-                        if header_index == -1:
-                            if len(buffer) > BUFFER_SIZE:
-                                buffer = buffer[-100:]
-                            break
-
-                        if len(buffer) < header_index + 6:
-                            break
-
-                        pkt_type = buffer[header_index + 4]
-                        packet_len = 308 if pkt_type == 0x02 else 300
-
-                        if len(buffer) >= header_index + packet_len:
-                            packet = buffer[header_index: header_index + packet_len]
-
-                            if pkt_type == 0x02:
-                                if pending_realtime_packet is not None:
-                                    print("⚠️ 警告：上一筆 0x02 尚未等到 0x01 ID，就已被新數據覆蓋")
-                                pending_realtime_packet = packet[:]
-                                last_realtime_time = time.time()
-                                print("📥 [收到 0x02] 即時數據已暫存... 等待 ID (0x01)")
-
-                            elif pkt_type == 0x01:
-                                current_id = extract_device_address(packet)
-                                print(f"🔑 [收到 0x01] 參數設定，解析出 ID: {hex(current_id)}")
-                                publisher.process_and_publish(packet, current_id, 0x01)
-
-                                if pending_realtime_packet:
-                                    time_diff = time.time() - last_realtime_time
-                                    if time_diff < PACKET_EXPIRE_TIME:
-                                        print(
-                                            f"🚀 [關聯成功] 使用 ID {hex(current_id)} 發布暫存 0x02 (延遲 {time_diff:.2f}s)"
-                                        )
-                                        publisher.process_and_publish(pending_realtime_packet, current_id, 0x02)
-                                    else:
-                                        print(f"🗑️ [過期丟棄] 暫存 0x02 超過 {PACKET_EXPIRE_TIME}s，不發布")
-                                    pending_realtime_packet = None
-                                else:
-                                    print("ℹ️ 目前無暫存 0x02 數據")
-                            else:
-                                pass
-
-                            del buffer[:header_index + packet_len]
-                        else:
-                            break
-
-                except socket.timeout:
-                    if pending_realtime_packet:
-                        age = time.time() - last_realtime_time
-                        if age > 10:
-                            print(f"⚠️ [連線閒置] 有一筆 0x02 超過 {age:.1f} 秒未配對 0x01，丟棄。")
-                            pending_realtime_packet = None
+                # ---------------------------
+                # 0x02: Realtime 資料 → 先暫存
+                # ---------------------------
+                if pkt_type == 0x02:
+                    if pending_realtime_packet is not None:
+                        print(
+                            "⚠️ 警告：上一筆 0x02 尚未配對到 0x01，就被新數據覆蓋"
+                        )
+                    pending_realtime_packet = packet[:]
+                    last_realtime_time = time.time()
+                    print("📥 [收到 0x02] 即時數據已暫存，等待 0x01 取得 ID...")
                     continue
 
-                except Exception as e:
-                    print(f"❌ 數據處理異常: {e}")
-                    buffer = bytearray()
+                # ---------------------------
+                # 0x01: Settings → 解析 ID、發佈、並嘗試綁定 0x02
+                # ---------------------------
+                if pkt_type == 0x01:
+                    device_id = extract_device_address(packet)
+                    print(
+                        f"🔑 [收到 0x01] 參數設定封包，解析出 ID: {hex(device_id)}"
+                    )
 
+                    # 解析 0x01 → dict
+                    payload_settings = decode_packet_to_dict(
+                        packet, packet_type=0x01
+                    )
+                    # 發佈 0x01（settings）
+                    publisher.publish_packet(
+                        device_id=device_id,
+                        packet_type=0x01,
+                        payload_dict=payload_settings,
+                    )
+
+                    # 有沒有 pending 的 0x02 ?
+                    if pending_realtime_packet is not None:
+                        time_diff = time.time() - last_realtime_time
+                        if time_diff < PACKET_EXPIRE_TIME:
+                            print(
+                                f"🚀 [綁定成功] 使用 ID {hex(device_id)} 發佈暫存 0x02 (延遲 {time_diff:.2f}s)"
+                            )
+                            payload_rt = decode_packet_to_dict(
+                                pending_realtime_packet, packet_type=0x02
+                            )
+                            publisher.publish_packet(
+                                device_id=device_id,
+                                packet_type=0x02,
+                                payload_dict=payload_rt,
+                            )
+                        else:
+                            print(
+                                f"🗑️ [過期丟棄] 暫存 0x02 超過 {PACKET_EXPIRE_TIME}s，放棄"
+                            )
+                        pending_realtime_packet = None
+                    else:
+                        print("ℹ️ 目前沒有暫存的 0x02 即時數據")
+                    continue
+
+                # 如未來有其他 pkt_type，可在這裡加 elif
+                print(f"ℹ️ 收到未處理 pkt_type: {hex(pkt_type)}")
+
+        except KeyboardInterrupt:
+            print("🛑 收到中斷訊號，準備關閉...")
+            break
         except Exception as e:
-            print(f"❌ 連線錯誤: {e}，5秒後重試...")
+            print(f"❌ 連線/處理錯誤: {e}，5 秒後重試...")
             time.sleep(5)
         finally:
             try:
-                if sock:
-                    sock.close()
+                transport.close()
             except Exception:
                 pass
+
 
 if __name__ == "__main__":
     main()

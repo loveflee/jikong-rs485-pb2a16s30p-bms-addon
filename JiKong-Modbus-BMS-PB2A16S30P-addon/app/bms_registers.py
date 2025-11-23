@@ -61,7 +61,7 @@ BMS_MAP = {
         112: ("充电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-charging" ),
         116: ("放电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-arrow-down"),
         120: ("均衡开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:scale-balance"),
-        124: ("电池设计容量", "mAH", TYPE_U32, conv_none, HA_SENSOR, "mdi:battery"),
+#        124: ("电池设计容量", "mAH", TYPE_U32, conv_none, HA_SENSOR, "mdi:battery"),
         128: ("短路保护延迟", "us", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         132: ("均衡起始电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         # 136 (0x88) - 260 (0x104): Connection Line Resistance (32組)

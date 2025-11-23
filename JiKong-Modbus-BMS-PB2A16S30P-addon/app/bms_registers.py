@@ -57,7 +57,7 @@ BMS_MAP = {
         96:  ("充电低温恢复", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         100: ("MOS过温保护", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
         104: ("MOS过温保护恢复", "°C", TYPE_I32, conv_div10, HA_SENSOR, "mdi:temperature-celsius"),
-        108: ("单体数量", "S", TYPE_U32, conv_none),
+        108: ("单体数量", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter"),
         112: ("充电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-charging" ),
         116: ("放电开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:battery-arrow-down"),
         120: ("均衡开关", "Bit", TYPE_U32, conv_none, HA_BINARY, "mdi:scale-balance"),
@@ -99,7 +99,7 @@ BMS_MAP = {
         30: ("16單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         # 假設只用到 16 串，若更多可繼續加 ...
         # --- Battery Stats ---
-        64: ("电池状态", "Hex", TYPE_U32, conv_hex), # Which cells exist
+        64: ("电池状态", "Hex", TYPE_U32, conv_hex, HA_BINARY, "mdi:switch"), # Which cells exist
         68: ("平均电压", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         70: ("最大压差", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave"),
         72: ("最大單體", "", TYPE_U8, conv_plus1, HA_SENSOR, "mdi:numeric"),
@@ -123,7 +123,7 @@ BMS_MAP = {
 
         # --- Alarms & Status ---
         160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex , HA_SENSOR, "mdi:switch"), # 包含過壓、過流等報警
-        164: ("均衡电流", "mA", TYPE_I16, conv_none),
+        164: ("均衡电流", "mA", TYPE_I16, conv_none, HA_SENSOR, "mdi:current-dc"),
         166: ("均衡状态", "Enum", TYPE_U8, conv_none), # 0:Off, 1:Chg, 2:Dchg
         167: ("剩余电量", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery"),
         168: ("剩余容量", "Ah", TYPE_I32, conv_div1000, HA_SENSOR, "mdi:battery"),
@@ -139,12 +139,12 @@ BMS_MAP = {
         194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch"),
 
         # --- Protection Release Times ---
-        196: ("放电过流保护解除时间", "S", TYPE_U16, conv_none),
-        198: ("放电短路保护解除时间", "S", TYPE_U16, conv_none),
-        200: ("充电过流保护解除时间", "S", TYPE_U16, conv_none),
-        202: ("充电短路保护解除时间", "S", TYPE_U16, conv_none),
-        204: ("单体欠压保护解除时间", "S", TYPE_U16, conv_none),
-        206: ("单体过压保护解除时间", "S", TYPE_U16, conv_none),
+        196: ("放电过流保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
+        198: ("放电短路保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
+        200: ("充电过流保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
+        202: ("充电短路保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
+        204: ("单体欠压保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
+        206: ("单体过压保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter"),
 
         # --- Missing Sensors ---
         208: ("Sensor Status", "Hex", TYPE_U16, conv_hex),

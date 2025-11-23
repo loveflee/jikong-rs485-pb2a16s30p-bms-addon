@@ -31,16 +31,14 @@ mqtt:
   client_id: $(jq -r '.mqtt_client_id' "${OPTIONS_FILE}")
 
 serial:
-  # 目前先寫死，如果之後要從 Add-on options 調整，可以再把 device/baudrate 放到 options/schema
-  device: "/dev/ttyUSB0"
-  baudrate: 9600
+  device: $(jq -r '.serial_device' "${OPTIONS_FILE}")
+  baudrate: $(jq -r '.serial_baudrate' "${OPTIONS_FILE}")
   timeout: 1.0
 
 app:
   packet_expire_time: $(jq -r '.packet_expire_time' "${OPTIONS_FILE}")
   settings_publish_interval: $(jq -r '.settings_publish_interval' "${OPTIONS_FILE}")
 
-  # 這三個直接吃 Add-on options 的值
   use_modbus_gateway: $(jq -r '.use_modbus_gateway' "${OPTIONS_FILE}")
   use_rs485_usb: $(jq -r '.use_rs485_usb' "${OPTIONS_FILE}")
   debug_raw_log: $(jq -r '.debug_raw_log' "${OPTIONS_FILE}")

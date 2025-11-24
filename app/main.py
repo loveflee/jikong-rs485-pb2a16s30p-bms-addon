@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+# main.py
 import time
 import logging
 import sys
@@ -64,9 +64,13 @@ def main():
             elif pkt_type == 0x01:
                 # 解析設備 ID（詳細解析訊息移到 DEBUG）
                 device_id = extract_device_address(packet)
-                logger.debug("收到 0x01 設定封包，解析得到 device_id = %d (0x%x)", device_id, device_id)
+                logger.debug(
+                    "收到 0x01 設定封包，解析得到 device_id = %d (0x%x)",
+                    device_id,
+                    device_id,
+                )
 
-                # 解碼並發佈設定 (如果你在 publisher 裡有節流，log 也放在那邊處理)
+                # 解碼並發佈設定 (publisher 內已做節流 & 靜音)
                 settings_payload = decode_packet(packet, 0x01)
                 publisher.publish_payload(device_id, 0x01, settings_payload)
 
@@ -74,12 +78,16 @@ def main():
                 if pending_realtime_packet:
                     time_diff = time.time() - last_realtime_time
                     if time_diff < PACKET_EXPIRE_TIME:
-                        # 這裡只印一行你要看的資訊：bmsX on line
-                        logger.info("bms%d on line", device_id)
-
                         # 真正解碼 0x02 並發佈
                         realtime_payload = decode_packet(pending_realtime_packet, 0x02)
                         publisher.publish_payload(device_id, 0x02, realtime_payload)
+
+                        # ✅ 只印一條你要看的 Info
+                        logger.info(
+                            "📡 BMS %d on line and realtime updated (delay %.2fs)",
+                            device_id,
+                            time_diff,
+                        )
 
                         # 細節放在 DEBUG
                         logger.debug(

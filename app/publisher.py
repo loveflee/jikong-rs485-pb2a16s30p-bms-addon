@@ -3,14 +3,11 @@ import json
 import time
 import yaml
 import os
-import logging
 from typing import Dict, Any
 
 import paho.mqtt.client as mqtt
 
 from bms_registers import BMS_MAP
-
-logger = logging.getLogger("jk_bms_publisher")
 
 
 class MqttPublisher:
@@ -32,21 +29,93 @@ class MqttPublisher:
         username = self.mqtt_cfg.get("username")
         password = self.mqtt_cfg.get("password")
 
-        self.client = mqtt.Client(client_id=self.client_id, protocol=mqtt.MQTTv311)
+        # ------- 新增：內部狀態 -------
+        self._connected = False
+        self._broker = broker
+        self._port = port
+
+        # ------- 建立 MQTT Client -------
+        self.client = mqtt.Client(
+            client_id=self.client_id,
+            protocol=mqtt.MQTTv311,
+            clean_session=True,
+        )
+
         if username:
             self.client.username_pw_set(username=username, password=password)
 
+        # 自動重連延遲 (1~30 秒)
+        # ※ paho v1/v2 都支援這個 API
         try:
-            self.client.connect(host=broker, port=port, keepalive=60)
+            self.client.reconnect_delay_set(min_delay=1, max_delay=30)
+        except Exception:
+            # 舊版 paho 沒這個也沒關係，只是少了 backoff 而已
+            pass
+
+        # ------- 綁定 callback -------
+        self.client.on_connect = self._on_connect
+        self.client.on_disconnect = self._on_disconnect
+
+        # ------- 使用 connect_async + loop_start 讓 client 自己重連 -------
+        try:
+            self.client.connect_async(self._broker, self._port, keepalive=60)
             self.client.loop_start()
-            logger.info("✅ MQTT 已連線: %s:%s (client_id=%s)", broker, port, self.client_id)
+            print(f"✅ 已嘗試連線到 MQTT {broker}:{port} (client_id={self.client_id})")
         except Exception as e:
-            logger.error("❌ 無法連線到 MQTT %s:%s - %s", broker, port, e)
+            print(f"❌ 啟動 MQTT 連線失敗 {broker}:{port} - {e}")
 
         # 設定封包發佈節流 (settings)
         self.settings_last_publish: Dict[int, float] = {}
         # 避免重複發 discovery
         self._published_discovery = set()
+
+    # ---------------- MQTT Callbacks ----------------
+
+    def _on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            self._connected = True
+            print(f"✅ MQTT 已連線成功: {self._broker}:{self._port}")
+        else:
+            # rc != 0 代表連線失敗，paho 會依 reconnect_delay 自動重試
+            self._connected = False
+            print(f"⚠️ MQTT 連線失敗 rc={rc}，將自動重試")
+
+    def _on_disconnect(self, client, userdata, rc):
+        # rc != 0 通常代表非正常斷線（例如 broker 重啟）
+        self._connected = False
+        if rc != 0:
+            print(f"⚠️ MQTT 非預期斷線 rc={rc}，將自動嘗試重連")
+        else:
+            print("ℹ️ MQTT 已正常斷線")
+
+    # ---------------- 安全發佈（含簡單重試） ----------------
+
+    def _safe_publish(self, topic: str, payload: str, retain: bool = False, retries: int = 3):
+        """
+        包一層安全發佈：
+        - 若尚未連線，會等一下再試
+        - 發佈失敗時，做幾次重試，避免 broker 剛好重啟時包直接消失
+        """
+        for attempt in range(1, retries + 1):
+            if not self._connected:
+                # MQTT 尚未連線好，稍等一下再試
+                time.sleep(1)
+            try:
+                result = self.client.publish(topic, payload=payload, retain=retain)
+                # paho v1/v2 都會回一個 MQTTMessageInfo
+                rc = getattr(result, "rc", result[0] if isinstance(result, tuple) else 0)
+                if rc == mqtt.MQTT_ERR_SUCCESS:
+                    # 成功就回傳
+                    return True
+                else:
+                    print(f"⚠️ MQTT publish 失敗 (rc={rc})，第 {attempt}/{retries} 次重試...")
+                    time.sleep(1)
+            except Exception as e:
+                print(f"❌ MQTT publish 發生例外: {e}，第 {attempt}/{retries} 次重試...")
+                time.sleep(1)
+
+        print(f"❌ MQTT publish 多次重試仍失敗，topic={topic}")
+        return False
 
     # ---------------- MQTT Discovery ----------------
 
@@ -117,16 +186,15 @@ class MqttPublisher:
                 topic = self._sensor_discovery_topic(device_id, object_id)
 
             try:
-                self.client.publish(topic, json.dumps(payload), retain=True)
-                logger.debug("📤 MQTT discovery 發佈: %s", topic)
+                self._safe_publish(topic, json.dumps(payload), retain=True)
             except Exception as e:
-                logger.warning("❌ publish discovery %s failed: %s", ha_type, e)
+                print(f"❌ publish discovery {ha_type} failed: {e}")
 
     # ---------------- 實際發佈 payload ----------------
 
     def publish_payload(self, device_id: int, packet_type: int, payload_dict: Dict[str, Any]):
         if packet_type not in BMS_MAP:
-            logger.debug("⚠️ 未知的封包類型: %s", hex(packet_type))
+            print(f"⚠️ 未知的封包類型: {hex(packet_type)}")
             return
 
         # Settings 節流
@@ -135,7 +203,7 @@ class MqttPublisher:
             last_time = self.settings_last_publish.get(device_id, 0)
             now = time.time()
             if now - last_time < interval:
-                # 👇 不再印 log，安靜節流
+                # 這裡故意不再印一堆 log，保持乾淨
                 return
             self.settings_last_publish[device_id] = now
 
@@ -143,11 +211,12 @@ class MqttPublisher:
         state_topic = f"{self.topic_prefix}/{device_id}/{kind}"
 
         try:
-            self.client.publish(state_topic, json.dumps(payload_dict), retain=False)
-            # 這裡只用 DEBUG，正常運轉時不會看到
-            logger.debug("📤 MQTT publish: %s => %s", state_topic, payload_dict)
+            ok = self._safe_publish(state_topic, json.dumps(payload_dict), retain=False)
+            if ok and packet_type == 0x02:
+                # 這行會跟 main.py 的 log 配合：只留下你在意的關鍵資訊
+                print(f"📡 BMS {device_id} realtime 更新已發佈到 MQTT")
         except Exception as e:
-            logger.error("❌ publish payload failed: %s", e)
+            print(f"❌ publish payload failed: {e}")
 
         # Discovery (只發一次)
         register_def = BMS_MAP[packet_type]

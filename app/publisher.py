@@ -135,12 +135,7 @@ class MqttPublisher:
             last_time = self.settings_last_publish.get(device_id, 0)
             now = time.time()
             if now - last_time < interval:
-                logger.info(
-                    "⏱️ Settings 節流: device %s, %.1fs < %.1fs，略過",
-                    device_id,
-                    now - last_time,
-                    interval,
-                )
+                # 👇 不再印 log，安靜節流
                 return
             self.settings_last_publish[device_id] = now
 
@@ -149,8 +144,7 @@ class MqttPublisher:
 
         try:
             self.client.publish(state_topic, json.dumps(payload_dict), retain=False)
-            # 這裡 log 也保持簡潔
-            logger.info("📡 BMS %s %s 更新已發佈到 MQTT", device_id, kind)
+            # 這裡只用 DEBUG，正常運轉時不會看到
             logger.debug("📤 MQTT publish: %s => %s", state_topic, payload_dict)
         except Exception as e:
             logger.error("❌ publish payload failed: %s", e)

@@ -39,17 +39,17 @@ app:
 數據2等待數據1 關聯的最大時間 (秒)
 packet_expire_time: 0.4
 Modbus TCP Gateway 設定
-tcp: host: 192.168.1.100 # 您的 Modbus Gateway IP 地址 port: 502 # Modbus TCP 預設端口 timeout: 10 # Socket 讀取超時時間
+tcp: host: 192.168.1.100 # 您的 Modbus Gateway IP 地址
+port: 502 # Modbus TCP 預設端口
+timeout: 10 # Socket 讀取超時時間
 
 RS485 序列埠設定 (如果使用 RS485 模式)
 serial:
 device: /dev/ttyUSB0
 baudrate: 115200
-
 ----------------------------------------------------
 MQTT 服務設定 (通常使用 Home Assistant 內建 Broker)
 ----------------------------------------------------
-
 mqtt: broker: 127.0.0.1 # HA Add-on 內部的 MQTT Broker 地址 port: 1883 username: your_mqtt_user password: your_mqtt_password
 Home Assistant MQTT Discovery 前綴
 discovery_prefix: homeassistant

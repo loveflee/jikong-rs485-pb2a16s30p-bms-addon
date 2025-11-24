@@ -27,8 +27,8 @@ a > a | b > b
 環境準備：確保您的 Home Assistant 已安裝並啟用 MQTT Broker 附加元件。 配置：將您的配置寫入 /data/config.yaml。 config.yaml 範例
 
 您需要在 Add-on 設定中指定以下參數：
-"""
 
+```
 ----------------------------------------------------
 
 傳輸層設定 (選擇 TCP Gateway 或 RS485 to USB)
@@ -80,7 +80,4 @@ topic_prefix: bms
 設定值 (0x01) 的發布間隔 (秒)，減少寫入次數
 
 settings_publish_interval: 60 # 1 分鐘發布一次設定值 📐 架構與重連機制
-"""
-本專案遵循明確的職責分離設計，以確保高穩定性：
-
-模組 職責 容錯機制 transport.py 建立與維持 Modbus/RS485 連線，接收原始 bytes。 無限重試迴圈：斷線、連線重置或 Gateway 重啟時，自動關閉 Socket，等待 5 秒後重新執行連線。 publisher.py 處理 MQTT 連線、發布數據和 Discovery。 Paho-MQTT Loop：啟動後會運行於背景執行緒，自動處理 Broker 斷線後的重連。 啟動時重試：應用程式啟動時，若 Broker 未準備好，會每 5 秒重試連線。 main.py 核心邏輯 (0x02 緩存，等待 0x01 ID 關聯)。 依賴 transport.py 的穩定數據流，本身不處理連線錯誤，保持業務邏輯的純粹。 
+```

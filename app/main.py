@@ -1,3 +1,4 @@
+# main.py
 import json
 import time
 import yaml
@@ -210,3 +211,4 @@ def get_publisher(config_path: str = "/data/config.yaml"):
     if _publisher_instance is None:
         _publisher_instance = MqttPublisher(config_path)
     return _publisher_instance
+

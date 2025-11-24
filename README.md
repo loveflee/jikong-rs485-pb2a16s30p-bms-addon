@@ -32,21 +32,20 @@ Home Assistant Add-on 運行
 ----------------------------------------------------
 傳輸層設定 (選擇 TCP Gateway 或 RS485 to USB)
 ----------------------------------------------------
-app:
-啟用 Modbus Gateway (TCP) 模式 {默認 modbus gateway}
+選項
+啟用 Modbus Gateway (TCP) 模式 (默認 modbus gateway)
 禁用 RS485 to USB 模式
+禁用 除錯 模式
 
-獲取設備設定值(數據類型1)與即時資訊(數據類型2)的連動時間 默認既可(packet_expire_time)
-packet_expire_time: 0.35
 Modbus TCP Gateway 設定
-tcp: host: 192.168.1.100 # 您的 Modbus Gateway IP 地址
-port: 502 # Modbus TCP 預設端口
+host: 192.168.1.100 # Modbus Gateway IP 地址
+port: 502 # Modbus TCP 端口
 timeout: 10 # Socket 讀取超時時間
-
+modbus_butter_size:4096 (默認既可)
 RS485 序列埠設定 (如果使用 usn to RS485 模式 禁用modbus gateway)
 serial:
-device: /dev/ttyUSB0
-baudrate: 115200
+device: /dev/ttyUSB0 # /dev/ttyUSB1 設定>硬體 中查詢  (usb0 usb1 就兩個有權限)
+baudrate: 115200 # (不要改)
 ----------------------------------------------------
 MQTT 服務設定 (通常使用 Home Assistant 內建 Broker)
 ----------------------------------------------------
@@ -56,5 +55,6 @@ username: your_mqtt_user
 password: your_mqtt_password
 mqtt_discovery_prefix: homeassistant # 默認既可
 topic_prefix: jk_bms # mqtt數據發布的主題前綴 (State Topic)
+packet_expire_time: 0.35 # 獲取設備設定值(數據類型1)與即時資訊(數據類型2)的連動時間 默認既可(packet_expire_time)
 settings_publish_interval: 60 # 1分鐘發布一次,設定值(數據類型1)，減少寫入次數
 ```

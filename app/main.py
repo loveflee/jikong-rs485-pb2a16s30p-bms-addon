@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # main.py
-import time logging sys
+import time
+import logging
+import sys
 
 from transport import create_transport, BaseTransport
 from publisher import get_publisher
@@ -101,3 +103,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -43,18 +43,18 @@ tcp: host: 192.168.1.100 # 您的 Modbus Gateway IP 地址
 port: 502 # Modbus TCP 預設端口
 timeout: 10 # Socket 讀取超時時間
 
-RS485 序列埠設定 (如果使用 RS485 模式)
+RS485 序列埠設定 (如果使用 usn to RS485 模式 禁用modbus gateway)
 serial:
 device: /dev/ttyUSB0
 baudrate: 115200
 ----------------------------------------------------
 MQTT 服務設定 (通常使用 Home Assistant 內建 Broker)
 ----------------------------------------------------
-mqtt: broker: 127.0.0.1 # HA Add-on 內部的 MQTT Broker 地址 port: 1883 username: your_mqtt_user password: your_mqtt_password
-Home Assistant MQTT Discovery 前綴
-discovery_prefix: homeassistant
-數據發布的主題前綴 (State Topic)
-topic_prefix: bms
-設定值(數據類型1)的發布間隔 (秒)，減少寫入次數
-settings_publish_interval: 60 # 1 分鐘發布一次設定值
+mqtt: broker: core-mosquitto # HA Add-on 內部的 MQTT
+port: 1883
+username: your_mqtt_user
+password: your_mqtt_password
+mqtt_discovery_prefix: homeassistant # 默認既可
+topic_prefix: jk_bms # mqtt數據發布的主題前綴 (State Topic)
+settings_publish_interval: 60 # 1分鐘發布一次,設定值(數據類型1)，減少寫入次數
 ```

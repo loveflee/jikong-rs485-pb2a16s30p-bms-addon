@@ -36,8 +36,8 @@ app:
 啟用 Modbus Gateway (TCP) 模式 {默認 modbus gateway}
 禁用 RS485 to USB 模式
 
-數據2等待數據1 關聯的最大時間 (秒)
-packet_expire_time: 0.4
+獲取設備addres與即時資訊的連動時間 默認既可(packet_expire_time)
+packet_expire_time: 0.35
 Modbus TCP Gateway 設定
 tcp: host: 192.168.1.100 # 您的 Modbus Gateway IP 地址
 port: 502 # Modbus TCP 預設端口

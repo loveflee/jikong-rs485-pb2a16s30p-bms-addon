@@ -38,7 +38,6 @@ serial:
 app:
   packet_expire_time: $(jq -r '.packet_expire_time' "${OPTIONS_FILE}")
   settings_publish_interval: $(jq -r '.settings_publish_interval' "${OPTIONS_FILE}")
-
   use_modbus_gateway: $(jq -r '.use_modbus_gateway' "${OPTIONS_FILE}")
   use_rs485_usb: $(jq -r '.use_rs485_usb' "${OPTIONS_FILE}")
   debug_raw_log: $(jq -r '.debug_raw_log' "${OPTIONS_FILE}")

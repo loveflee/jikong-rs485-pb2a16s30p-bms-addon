@@ -6,7 +6,7 @@ Listening mode How to do
 https://github.com/jean-luc1203/jkbms-rs485-addon/tree/main
 
 usb to RS485 ch340 cp2102
-uart:
+can use
   - /dev/ttyUSB0
   - /dev/ttyUSB1
   - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port

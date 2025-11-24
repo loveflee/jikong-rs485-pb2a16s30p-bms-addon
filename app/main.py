@@ -1,117 +1,121 @@
-# main.py
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+# main.py
 import time
 import logging
 import sys
-
-# 確保在 import 其他模組前設定好基本 logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
-    datefmt="%H:%M:%S",
-    stream=sys.stdout,
-)
 
 from transport import create_transport, BaseTransport
 from publisher import get_publisher
 from decoder import decode_packet, extract_device_address
 
-logger = logging.getLogger("jk_bms_main")
 
-def update_log_level(debug_raw: bool) -> None:
+def setup_logging(debug_raw: bool) -> None:
     """
-    根據 config 更新 root logger 等級。
+    設定 logging 格式與等級。
+
+    debug_raw = True 時，輸出 DEBUG（會看到解析細節、raw log）
+    否則只顯示 INFO 以上（只看到關鍵事件）。
     """
     level = logging.DEBUG if debug_raw else logging.INFO
-    logging.getLogger().setLevel(level)
-    logger.info(f"📝 Logging level set to: {'DEBUG' if debug_raw else 'INFO'}")
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+        stream=sys.stdout,
+    )
+
+
+logger = logging.getLogger("jk_bms_main")
+
 
 def main():
-    logger.info("🚀 JiKong BMS Monitor 啟動中...")
-
-    # 1. 建立通訊層 (TCP or RS485)
-    # 這一步只是建立物件，真正連線是在 transport.packets() 迴圈內
+    # 建立通訊層（TCP or RS485）
     transport: BaseTransport = create_transport()
-    
-    # 讀取 Config 用來設定 Log
-    debug_raw_log = bool(transport.app_cfg.get("debug_raw_log", False))
-    update_log_level(debug_raw_log)
-    PACKET_EXPIRE_TIME = float(transport.app_cfg.get("packet_expire_time", 0.4))
+    # 建立 MQTT 發佈器
+    publisher = get_publisher(config_path="/data/config.yaml")
 
-    # 2. 建立 MQTT 發佈器
-    # 注意：新的 publisher __init__ 包含重試迴圈，若 MQTT Broker 沒開會在這裡等待直到連線成功
-    try:
-        publisher = get_publisher(config_path="/data/config.yaml")
-    except Exception as e:
-        logger.critical(f"❌ 無法初始化 MQTT Publisher，程式即將結束: {e}")
-        sys.exit(1)
+    # 從 config 裡拿到設定
+    app_cfg = getattr(transport, "app_cfg", {}) or {}
+    PACKET_EXPIRE_TIME = float(app_cfg.get("packet_expire_time", 0.4))
+    debug_raw_log = bool(app_cfg.get("debug_raw_log", False))
 
-    # 3. 變數初始化
+    # 啟動 logging
+    setup_logging(debug_raw_log)
+
+    # 0x02 綁定邏輯暫存
     pending_realtime_packet = None
     last_realtime_time = 0.0
 
-    logger.info("📡 開始監聽 Transport 數據流...")
+    logger.info("🚀 JiKong BMS main 啟動，開始處理封包...")
 
-    # 4. 主迴圈：持續從 transport 收 (packet_type, raw_bytes)
-    # 若 transport 斷線，generator 內部會自動重試，不會讓這個 for loop 結束
-    try:
-        for pkt_type, packet in transport.packets():
-            try:
-                if pkt_type == 0x02:
-                    # 收到即時數據，暫存等待 0x01 來綁定 ID
-                    if pending_realtime_packet is not None:
-                        logger.warning("⚠️ 上一筆 0x02 尚未等到 0x01 ID，已被新數據覆蓋")
-                    
-                    pending_realtime_packet = packet[:]
-                    last_realtime_time = time.time()
-                    logger.debug("📥 收到 0x02 即時數據 (Length: %d)，暫存中...", len(packet))
+    # 持續從 transport 收 (packet_type, raw_bytes)
+    for pkt_type, packet in transport.packets():
+        try:
+            if pkt_type == 0x02:
+                # 先暫存，等 0x01 來補 ID
+                if pending_realtime_packet is not None:
+                    logger.debug("上一筆 0x02 尚未等到 0x01，就已被覆蓋")
+                pending_realtime_packet = packet[:]
+                last_realtime_time = time.time()
+                # 這行只在 debug 模式看得到
+                logger.debug("收到 0x02 即時數據，已暫存等待 0x01")
 
-                elif pkt_type == 0x01:
-                    # 收到設定數據，這是所有邏輯的核心 (因為只有它帶有 Device ID)
-                    current_id = extract_device_address(packet)
-                    if current_id == 0:
-                        logger.warning("⚠️ 收到 0x01 但無法解析 Device ID，跳過處理")
-                        continue
+            elif pkt_type == 0x01:
+                # 解析設備 ID（詳細解析訊息移到 DEBUG）
+                device_id = extract_device_address(packet)
+                logger.debug(
+                    "收到 0x01 設定封包，解析得到 device_id = %d (0x%x)",
+                    device_id,
+                    device_id,
+                )
 
-                    logger.debug(f"🔑 收到 0x01，解析出 ID: {hex(current_id)}")
+                # 解碼並發佈設定 (publisher 內已做節流 & 靜音)
+                settings_payload = decode_packet(packet, 0x01)
+                publisher.publish_payload(device_id, 0x01, settings_payload)
 
-                    # A. 發佈 Settings
-                    settings_payload = decode_packet(packet, 0x01)
-                    publisher.publish_payload(current_id, 0x01, settings_payload)
+                # 處理之前暫存的 0x02
+                if pending_realtime_packet:
+                    time_diff = time.time() - last_realtime_time
+                    if time_diff < PACKET_EXPIRE_TIME:
+                        # 真正解碼 0x02 並發佈
+                        realtime_payload = decode_packet(pending_realtime_packet, 0x02)
+                        publisher.publish_payload(device_id, 0x02, realtime_payload)
 
-                    # B. 檢查是否有對應的 0x02 暫存數據
-                    if pending_realtime_packet:
-                        time_diff = time.time() - last_realtime_time
-                        
-                        if time_diff < PACKET_EXPIRE_TIME:
-                            logger.info(
-                                f"✅ [配對成功] ID:{hex(current_id)} | 0x02 延遲:{time_diff:.3f}s"
-                            )
-                            realtime_payload = decode_packet(pending_realtime_packet, 0x02)
-                            publisher.publish_payload(current_id, 0x02, realtime_payload)
-                        else:
-                            logger.warning(
-                                f"🗑️ [配對過期] ID:{hex(current_id)} | 0x02 延遲:{time_diff:.3f}s > {PACKET_EXPIRE_TIME}s"
-                            )
-                        
-                        # 清空暫存，避免重複使用
-                        pending_realtime_packet = None
+                        # ✅ 只印一條你要看的 Info
+                        logger.info(
+                            "📡 BMS %d on line and realtime updated (delay %.2fs)",
+                            device_id,
+                            time_diff,
+                        )
+
+                        # 細節放在 DEBUG
+                        logger.debug(
+                            "關聯 0x02 即時數據 → device_id=%d (延遲 %.2fs, 已發佈到 MQTT)",
+                            device_id,
+                            time_diff,
+                        )
                     else:
-                        logger.debug("ℹ️ 收到 0x01，但目前無暫存的 0x02")
-
+                        logger.debug(
+                            "暫存 0x02 已超過 %.2fs，捨棄 (實際延遲 %.2fs)",
+                            PACKET_EXPIRE_TIME,
+                            time_diff,
+                        )
+                    pending_realtime_packet = None
                 else:
-                    logger.debug(f"ℹ️ 收到其他封包型別: {hex(pkt_type)}，略過")
+                    logger.debug("收到 0x01，但目前沒有暫存的 0x02 即時數據")
 
-            except Exception as inner_e:
-                logger.error(f"❌ 封包處理邏輯錯誤: {inner_e}", exc_info=True)
+            else:
+                # 未知封包型別用 DEBUG 記錄，平常不吵
+                logger.debug("收到未知封包型別: %s，略過", hex(pkt_type))
 
-    except KeyboardInterrupt:
-        logger.info("👋 使用者中斷，程式結束")
-    except Exception as e:
-        logger.critical(f"❌ 主程式發生致命錯誤: {e}", exc_info=True)
-        sys.exit(1)
+        except Exception as e:
+            # 錯誤時一定要看到，所以用 ERROR
+            if debug_raw_log:
+                logger.error("main 處理封包發生錯誤: %s", e, exc_info=True)
+            else:
+                logger.error("main 處理封包發生錯誤: %s", e)
+
 
 if __name__ == "__main__":
     main()

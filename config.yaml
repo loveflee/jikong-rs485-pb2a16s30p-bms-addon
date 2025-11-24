@@ -1,6 +1,6 @@
 #config.yaml
 name: "JiKong Rs485 PB2A16S30P BMS"
-version: "1.0.5"
+version: "1.0.6"
 slug: "jikong_rs485_pb2a16s30p_bms"
 description: "透過 Modbus gateway 或 RS485 USB 讀取 jikong pb2a16s30p BMS 資料並發佈到 MQTT，供 Home Assistant 使用。"
 url: "https://github.com/loveflee/jikong-rs485-pb2a16s30p-bms-addon"

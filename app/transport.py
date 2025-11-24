@@ -1,9 +1,10 @@
-#transport.py
+# transport.py
 import socket
 import time
 import sys
 import os
-import yaml 
+import yaml
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Generator
 
@@ -12,6 +13,7 @@ try:
 except ImportError:
     serial = None
 
+logger = logging.getLogger("jk_bms_transport")
 
 CONFIG_PATH = "/data/config.yaml"
 
@@ -23,7 +25,7 @@ PACKET_LEN_02 = 308
 def load_config():
     """從 /data/config.yaml 讀取整體設定。"""
     if not os.path.exists(CONFIG_PATH):
-        print(f"❌ 找不到設定檔 {CONFIG_PATH}")
+        logger.critical("❌ 找不到設定檔 %s", CONFIG_PATH)
         sys.exit(1)
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -31,7 +33,10 @@ def load_config():
 
 class BaseTransport(ABC):
     """
-    通訊層抽象基底類別
+    通訊層抽象基底類別：
+    - 負責從「來源」收包（TCP 或 RS485）
+    - 組合成完整封包後，產生 (packet_type, raw_bytes)
+    - 不處理解碼、不發 MQTT
     """
 
     def __init__(self, cfg: dict):
@@ -53,7 +58,6 @@ class BaseTransport(ABC):
 class TcpTransport(BaseTransport):
     """
     使用 Modbus Gateway (TCP) 的傳輸方式
-    修正：加入自動重連機制
     """
 
     def packets(self) -> Generator[Tuple[int, bytes], None, None]:
@@ -61,114 +65,108 @@ class TcpTransport(BaseTransport):
         port = int(self.tcp_cfg.get("port", 502))
         timeout = int(self.tcp_cfg.get("timeout", 10))
 
-        # 外層無窮迴圈：確保斷線後可以重新連線
         while True:
             sock = None
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(timeout)
                 sock.connect((host, port))
-                print(f"✅ 已連線到 {host}:{port} (TCP)，開始監聽...")
+                logger.info("🌐 已連線到 %s:%s，開始監聽 BMS 數據 (TCP)...", host, port)
 
                 buffer = bytearray()
 
-                # 內層迴圈：資料讀取
                 while True:
-                    try:
-                        chunk = sock.recv(1024)
-                    except socket.timeout:
-                        # timeout 不代表斷線，繼續嘗試讀取
-                        continue
-                    except OSError:
-                        # 連線異常 (Connection reset 等)
-                        print("⚠️ TCP 連線中斷，準備重連...")
-                        break
-
+                    chunk = sock.recv(1024)
                     if not chunk:
-                        print("⚠️ 伺服器端已斷開連線 (TCP)")
+                        logger.warning("⚠️ 伺服器端已斷開連線 (TCP)")
                         break
 
-                    # 除錯模式
+                    # 除錯模式：只印 raw hexdump
                     if self.debug_raw_log:
                         hex_str = " ".join(f"{b:02X}" for b in chunk)
-                        print(f"[DEBUG RAW] {hex_str}")
+                        logger.debug("[DEBUG RAW TCP] (%d bytes): %s", len(chunk), hex_str)
 
                     buffer.extend(chunk)
 
-                    # 解析 buffer
+                    # 解析 buffer 中的完整封包
                     while True:
                         header_index = buffer.find(HEADER)
                         if header_index == -1:
+                            # 沒有找到 header，避免 buffer 無限長，保留最後 100 bytes
                             if len(buffer) > self.buffer_size:
                                 buffer = buffer[-100:]
                             break
 
+                        # 確保有 header + type + len 至少 6 bytes
                         if len(buffer) < header_index + 6:
                             break
 
                         pkt_type = buffer[header_index + 4]
+                        # 0x02 → 308 bytes，其他 → 300 bytes
                         packet_len = PACKET_LEN_02 if pkt_type == 0x02 else PACKET_LEN_01
 
                         if len(buffer) >= header_index + packet_len:
-                            packet = buffer[header_index : header_index + packet_len]
-                            
+                            packet = buffer[header_index:header_index + packet_len]
+
+                            # 丟給上層
                             yield pkt_type, bytes(packet)
 
-                            del buffer[: header_index + packet_len]
+                            # 丟掉已處理的部分
+                            del buffer[:header_index + packet_len]
                         else:
+                            # 封包尚未完整，等待下一次 recv
                             break
 
+            except socket.timeout:
+                logger.warning("⚠️ TCP 連線逾時，重新連線...")
             except Exception as e:
-                print(f"❌ TCP 連線失敗或異常: {e}，5 秒後重試...")
+                logger.error("❌ TCP 傳輸層異常: %s，5 秒後重試...", e)
+                time.sleep(5)
             finally:
                 if sock:
                     try:
                         sock.close()
-                    except:
+                    except Exception:
                         pass
-                sock = None
-            
-            # 斷線後的冷卻時間
-            time.sleep(5)
 
 
 class Rs485Transport(BaseTransport):
     """
-    使用 RS485 to USB 的傳輸方式
-    修正：加入自動重連機制 (防止 USB 拔除或錯誤時 Crash)
+    使用 RS485 to USB (例如 /dev/ttyUSB0) 的傳輸方式
+    - 讀取 serial 資料
+    - 組合與 TCP 同樣格式的封包 0x01 / 0x02
     """
 
     def packets(self) -> Generator[Tuple[int, bytes], None, None]:
         if serial is None:
-            print("❌ 未安裝 pyserial，無法使用 RS485 模式")
+            logger.error("❌ 未安裝 pyserial，無法使用 RS485 模式")
             return
 
         device = self.serial_cfg.get("device", "/dev/ttyUSB0")
         baudrate = int(self.serial_cfg.get("baudrate", 115200))
         timeout = float(self.serial_cfg.get("timeout", 1.0))
 
-        # 外層無窮迴圈：確保重開
         while True:
             ser = None
             try:
                 ser = serial.Serial(port=device, baudrate=baudrate, timeout=timeout)
-                print(f"✅ 已連線到 RS485 裝置 {device}")
+                logger.info(
+                    "🔌 已連線到 RS485 裝置 %s (baudrate=%d)，開始監聽 BMS 數據 (RS485)...",
+                    device,
+                    baudrate,
+                )
 
                 buffer = bytearray()
 
                 while True:
-                    try:
-                        data = ser.read(1024)
-                    except Exception as e:
-                        print(f"⚠️ RS485 讀取錯誤: {e}")
-                        break
-
+                    data = ser.read(1024)
                     if not data:
+                        # timeout 會回空 bytes，單純繼續
                         continue
 
                     if self.debug_raw_log:
                         hex_str = " ".join(f"{b:02X}" for b in data)
-                        print(f"[DEBUG RAW RS485] {hex_str}")
+                        logger.debug("[DEBUG RAW RS485] (%d bytes): %s", len(data), hex_str)
 
                     buffer.extend(data)
 
@@ -186,26 +184,35 @@ class Rs485Transport(BaseTransport):
                         packet_len = PACKET_LEN_02 if pkt_type == 0x02 else PACKET_LEN_01
 
                         if len(buffer) >= header_index + packet_len:
-                            packet = buffer[header_index : header_index + packet_len]
+                            packet = buffer[header_index:header_index + packet_len]
                             yield pkt_type, bytes(packet)
-                            del buffer[: header_index + packet_len]
+                            del buffer[:header_index + packet_len]
                         else:
                             break
-            
+
+            except PermissionError as e:
+                logger.critical(
+                    "❌ RS485 權限錯誤: %s，請確認 HA Add-on 已設定 uart & device 映射", e
+                )
+                time.sleep(10)
             except Exception as e:
-                print(f"❌ RS485 裝置異常: {e}，5 秒後重試...")
+                logger.error("❌ RS485 傳輸層異常: %s，5 秒後重試...", e)
+                time.sleep(5)
             finally:
                 if ser:
                     try:
                         ser.close()
-                    except:
+                    except Exception:
                         pass
-                ser = None
-            
-            time.sleep(5)
 
 
 def create_transport() -> BaseTransport:
+    """
+    根據 /data/config.yaml 的 app 開關，建立對應的 Transport。
+    - app.use_modbus_gateway == true → TcpTransport
+    - app.use_rs485_usb == true     → Rs485Transport
+    - 兩個都 true 時，優先 TCP
+    """
     cfg = load_config()
     app_cfg = cfg.get("app", {})
 
@@ -213,12 +220,13 @@ def create_transport() -> BaseTransport:
     use_rs485 = bool(app_cfg.get("use_rs485_usb", False))
 
     if use_tcp:
-        print("🔧 Transport 模式：TCP Modbus Gateway")
+        logger.info("🔧 Transport 模式：TCP Modbus Gateway")
         return TcpTransport(cfg)
     elif use_rs485:
-        print("🔧 Transport 模式：RS485 to USB")
+        logger.info("🔧 Transport 模式：RS485 to USB")
         return Rs485Transport(cfg)
     else:
-        print("⚠️ 未啟用任何 transport，預設使用 TCP。")
+        logger.warning(
+            "⚠️ 未啟用任何 transport（use_modbus_gateway / use_rs485_usb 都是 false），預設使用 TCP。"
+        )
         return TcpTransport(cfg)
-

@@ -3,11 +3,14 @@ import json
 import time
 import yaml
 import os
+import logging
 from typing import Dict, Any
 
 import paho.mqtt.client as mqtt
 
 from bms_registers import BMS_MAP
+
+logger = logging.getLogger("jk_bms_publisher")
 
 
 class MqttPublisher:
@@ -32,12 +35,13 @@ class MqttPublisher:
         self.client = mqtt.Client(client_id=self.client_id, protocol=mqtt.MQTTv311)
         if username:
             self.client.username_pw_set(username=username, password=password)
+
         try:
             self.client.connect(host=broker, port=port, keepalive=60)
             self.client.loop_start()
-            print(f"✅ 已連線到 MQTT {broker}:{port} (client_id={self.client_id})")
+            logger.info("✅ MQTT 已連線: %s:%s (client_id=%s)", broker, port, self.client_id)
         except Exception as e:
-            print(f"❌ 無法連線到 MQTT {broker}:{port} - {e}")
+            logger.error("❌ 無法連線到 MQTT %s:%s - %s", broker, port, e)
 
         # 設定封包發佈節流 (settings)
         self.settings_last_publish: Dict[int, float] = {}
@@ -114,14 +118,15 @@ class MqttPublisher:
 
             try:
                 self.client.publish(topic, json.dumps(payload), retain=True)
+                logger.debug("📤 MQTT discovery 發佈: %s", topic)
             except Exception as e:
-                print(f"❌ publish discovery {ha_type} failed: {e}")
+                logger.warning("❌ publish discovery %s failed: %s", ha_type, e)
 
     # ---------------- 實際發佈 payload ----------------
 
     def publish_payload(self, device_id: int, packet_type: int, payload_dict: Dict[str, Any]):
         if packet_type not in BMS_MAP:
-            print(f"⚠️ 未知的封包類型: {hex(packet_type)}")
+            logger.debug("⚠️ 未知的封包類型: %s", hex(packet_type))
             return
 
         # Settings 節流
@@ -130,7 +135,12 @@ class MqttPublisher:
             last_time = self.settings_last_publish.get(device_id, 0)
             now = time.time()
             if now - last_time < interval:
-                print(f"⏱️ Settings 發佈節流: {now - last_time:.1f}s < {interval}s，略過")
+                logger.info(
+                    "⏱️ Settings 節流: device %s, %.1fs < %.1fs，略過",
+                    device_id,
+                    now - last_time,
+                    interval,
+                )
                 return
             self.settings_last_publish[device_id] = now
 
@@ -139,9 +149,11 @@ class MqttPublisher:
 
         try:
             self.client.publish(state_topic, json.dumps(payload_dict), retain=False)
-            print(f"✅ 已發佈到 MQTT: {state_topic}")
+            # 這裡 log 也保持簡潔
+            logger.info("📡 BMS %s %s 更新已發佈到 MQTT", device_id, kind)
+            logger.debug("📤 MQTT publish: %s => %s", state_topic, payload_dict)
         except Exception as e:
-            print(f"❌ publish payload failed: {e}")
+            logger.error("❌ publish payload failed: %s", e)
 
         # Discovery (只發一次)
         register_def = BMS_MAP[packet_type]

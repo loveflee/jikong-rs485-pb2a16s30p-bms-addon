@@ -210,13 +210,13 @@ class MqttPublisher:
         kind = "realtime" if packet_type == 0x02 else "settings"
         state_topic = f"{self.topic_prefix}/{device_id}/{kind}"
 
-        try:
-            ok = self._safe_publish(state_topic, json.dumps(payload_dict), retain=False)
-            if ok and packet_type == 0x02:
-                # 這行會跟 main.py 的 log 配合：只留下你在意的關鍵資訊
-                #print(f"📡 BMS {device_id} realtime 更新已發佈到 MQTT")
-        except Exception as e:
-            print(f"❌ publish payload failed: {e}")
+#        try:
+#            ok = self._safe_publish(state_topic, json.dumps(payload_dict), retain=False)
+#            if ok and packet_type == 0x02:
+#                # 這行會跟 main.py 的 log 配合：只留下你在意的關鍵資訊
+#                print(f"📡 BMS {device_id} realtime 更新已發佈到 MQTT")
+#        except Exception as e:
+#            print(f"❌ publish payload failed: {e}")
 
         # Discovery (只發一次)
         register_def = BMS_MAP[packet_type]
@@ -231,4 +231,5 @@ def get_publisher(config_path: str = "/data/config.yaml"):
     if _publisher_instance is None:
         _publisher_instance = MqttPublisher(config_path)
     return _publisher_instance
+
 

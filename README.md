@@ -58,3 +58,18 @@ topic_prefix: jk_bms # mqtt數據發布的主題前綴 (State Topic)
 packet_expire_time: 0.35 # 獲取設備設定值(數據類型1)與即時資訊(數據類型2)的連動時間 默認既可(packet_expire_time)
 settings_publish_interval: 60 # 1分鐘發布一次,設定值(數據類型1)，減少寫入次數
 ```
+最小電壓與串數
+```
+{% set ns = namespace(min_voltage=999.0, min_cell_number=0) %}
+{% for i in range(1, 17) %}
+  {% set entity_id = "sensor.jk_modbus_bms_0_" + "%02d" % i + "dan_ti_dian_ya" %}
+  {% set current_voltage = states(entity_id) | float(0.0) %}
+  
+  {% if current_voltage < ns.min_voltage and current_voltage > 0.1 %}
+    {% set ns.min_voltage = current_voltage %}
+    {% set ns.min_cell_number = i %}
+  {% endif %}
+{% endfor %}
+{# 輸出： 'Cell 05: 3.25 V' #}
+Cell {{ "%02d" % ns.min_cell_number }}: {{ ns.min_voltage }} V
+```

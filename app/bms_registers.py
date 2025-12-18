@@ -104,7 +104,7 @@ BMS_MAP = {
         28: ("15單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "cell_15_voltage"),
         30: ("16單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "cell_16_voltage"),
         
-        # --- Battery Stats ---
+        # --- Battery Statistics ---
 #       64: ("电池状态", "Hex", TYPE_U32, conv_hex, HA_BINARY, "mdi:switch", "battery_status"),
         68: ("平均电压", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "avg_voltage"),
         70: ("最大压差", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "max_diff_voltage"),
@@ -146,10 +146,10 @@ BMS_MAP = {
         # --- Protection Release Times ---
         196: ("放电过流保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_ocp_release_time"),
         198: ("放电短路保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_sc_release_time"),
-        200: ("充电过流保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_ocp_release_time"),
-        202: ("充电短路保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_sc_release_time"),
-        204: ("单体欠压保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_uvp_release_time"),
-        206: ("单体过压保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_ovp_release_time"),
+        200: ("充电過流保護解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_ocp_release_time"),
+        202: ("充电短路保護解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_sc_release_time"),
+        204: ("單體欠壓保護解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_uvp_release_time"),
+        206: ("單體過壓保護解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_ovp_release_time"),
 
 #       208: ("Sensor Status", "Hex", TYPE_U16, conv_hex, HA_SENSOR, None, "sensor_status"),
         212: ("应急开关時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "emergency_switch_time"),

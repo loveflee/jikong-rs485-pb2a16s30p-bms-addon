@@ -10,11 +10,12 @@ logger = logging.getLogger("jk_bms_decoder")
 def extract_device_address(packet: bytes) -> Optional[int]:
     """
     從 JK BMS 的 0x01 (Settings) 封包中提取硬體位址。
+    修正：還原為 274 (270 + 4)，確保 Master ID 能正確被識別為 0。
     """
     try:
-        # 絕對偏移 = 6 + 270 = 276
-        if len(packet) >= 280:
-            return struct.unpack_from("<I", packet, 276)[0]
+        # 如果這裡讀錯，Master 就會變成 Ghost BMS 15
+        if len(packet) >= 278:
+            return struct.unpack_from("<I", packet, 274)[0]
         return None
     except Exception as e:
         logger.debug(f"提取設備地址失敗: {e}")

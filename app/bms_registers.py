@@ -71,7 +71,7 @@ BMS_MAP = {
 #       124: ("电池设计容量", "mAH", TYPE_U32, conv_none, HA_SENSOR, "mdi:battery", "design_capacity"),
         128: ("短路保护延迟", "us", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter", "sc_delay"),
         132: ("均衡起始电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave", "balance_start_voltage"),
-        # 136 (0x88) - 260 (0x104): Connection Line Resistance (32組採樣線電阻)
+        # 136-260: Connection Line Resistance (32組採樣線電阻)
 #       136: ("Set: Wire Res 0", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_0"),
 #       140: ("Set: Wire Res 1", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_1"),
 #       144: ("Set: Wire Res 2", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_2"),
@@ -144,15 +144,15 @@ BMS_MAP = {
 #       194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch", "user_alarms_2"),
 
         # --- Protection Release Times ---
-        196: ("放电过流保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_ocp_release_time"),
-        198: ("放电短路保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_sc_release_time"),
-        200: ("充电過流保護解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_ocp_release_time"),
-        202: ("充电短路保護解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_sc_release_time"),
-        204: ("單體欠壓保護解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_uvp_release_time"),
-        206: ("單體過壓保護解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_ovp_release_time"),
+        196: ("放电过流保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_ocp_release_time"),
+        198: ("放电短路保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_sc_release_time"),
+        200: ("充电过流保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_ocp_release_time"),
+        202: ("充电短路保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_sc_release_time"),
+        204: ("单体欠压保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_uvp_release_time"),
+        206: ("单体过压保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_ovp_release_time"),
 
 #       208: ("Sensor Status", "Hex", TYPE_U16, conv_hex, HA_SENSOR, None, "sensor_status"),
-        212: ("应急开关時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "emergency_switch_time"),
+        212: ("应急开关时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "emergency_switch_time"),
 
         # --- Calibration/Other ---
 #       240: ("SysRunTicks", "0.1S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter", "sys_run_ticks"),
@@ -160,10 +160,10 @@ BMS_MAP = {
         250: ("电池温度4", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius", "temp_sensor_4"),
         252: ("电池温度5", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius", "temp_sensor_5"),
 #       256: ("RTC计数器", "Tick", TYPE_U32, conv_none, HA_SENSOR, "mdi:numeric", "rtc_counter"),
-        264: ("进入休眠時間", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:sleep", "sleep_time_seconds"),
-#       268: ("并聯限流模块狀態", "Bit", TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging", "parallel_limiter_status"),
+        264: ("进入休眠时间", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:sleep", "sleep_time_seconds"),
+#       268: ("并联限流模块状态", "Bit", TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging", "parallel_limiter_status"),
 
-        # --- 🟢 重新補回 9001/9002 狀態開關 ---
+        # --- 🟢 補回 9001/9002 狀態開關 ---
 #       9001: ("充电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging", "charge_mos"),
 #       9002: ("放电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-arrow-down", "discharge_mos")
     }

@@ -87,14 +87,14 @@ def process_packets_worker(app_config):
             timestamp, packet_type, packet_data = packet_item
             
             try:
-                # 🟢 1. 監聽到 Master 指令 (0x10) -> 更新點名簿並「暫存」指令
+                # 🟢 1. 監聽到 Master 指令 (0x10) -> 更新點名簿並「暫存」指令內容
                 if packet_type == 0x10:
                     cmd_map = decode_packet(packet_data, 0x10)
                     if cmd_map:
                         target_id = cmd_map.get("target_slave_id")
                         last_polled_slave_id = target_id
                         last_poll_timestamp = timestamp
-                        # 指令掛起，不立即發布
+                        # 將指令掛起，不立即發布，等待 Slave 應答
                         pending_cmds[target_id] = cmd_map
                     continue 
 
@@ -112,15 +112,15 @@ def process_packets_worker(app_config):
                     if hw_id == 0:
                         target_publish_id = 0
                     else:
-                        # 使用 Master 剛才點名的序號作為 HA 的顯示 ID
+                        # 非 Master 數據，一律歸類給目前被點名的 Slave ID
                         target_publish_id = last_polled_slave_id
 
                     if target_publish_id is not None:
-                        # 🔹 升級點：只有在此序號有回應時，才發布它的 0x10 指令
+                        # 🔹 升級點：只有在此序號有回應時，才發布掛載在該 ID 下的指令
                         if target_publish_id in pending_cmds:
                             publisher.publish_payload(target_publish_id, 0x10, pending_cmds.pop(target_publish_id))
                         
-                        # 清理過期指令緩衝
+                        # 清理過期指令緩衝 (超過 5 秒未應答則視為失敗)
                         expired_ids = [sid for sid in pending_cmds if (timestamp - last_poll_timestamp) > 5.0]
                         for sid in expired_ids: pending_cmds.pop(sid, None)
 
@@ -129,9 +129,10 @@ def process_packets_worker(app_config):
                         if settings_map:
                             publisher.publish_payload(target_publish_id, 0x01, settings_map)
                         
-                        # 發布對應的 0x02 即時數據 (維持原本變灰機制)
+                        # 發布對應的 0x02 即時數據
                         if "last" in pending_realtime_data:
                             rt_time, rt_data = pending_realtime_data.pop("last")
+                            # 檢查數據新鮮度
                             if (timestamp - rt_time) <= packet_expire_time:
                                 realtime_map = decode_packet(rt_data, 0x02)
                                 if realtime_map:
@@ -146,6 +147,7 @@ def process_packets_worker(app_config):
             time.sleep(1)
 
 def main():
+    # 🚀 載入介面設定
     full_cfg = load_ui_config()
     app_cfg = full_cfg.get('app', {})
     
@@ -162,11 +164,14 @@ def main():
     logger.info(f"📡 介面: {'USB 直連' if app_cfg.get('use_rs485_usb') else 'TCP 網關'}")
     logger.info("==========================================")
     
+    # 預熱發布器
     _ = get_publisher(CONFIG_PATH)
     
+    # 啟動智能消費者執行緒
     worker = threading.Thread(target=process_packets_worker, args=(app_cfg,), daemon=True)
     worker.start()
 
+    # 啟動傳輸層 (生產者)
     transport_inst = create_transport()
     try:
         for pkt_type, pkt_data in transport_inst.packets():
@@ -175,9 +180,9 @@ def main():
             else:
                 logger.warning("⚠️ 隊列已滿，請檢查系統效能")
     except KeyboardInterrupt:
-        logger.info("🛑 系統停止")
+        logger.info("🛑 系統手動停止")
     except Exception as e:
-        logger.error(f"💥 傳輸層崩倉: {e}")
+        logger.error(f"💥 傳輸層崩潰: {e}")
 
 if __name__ == "__main__":
     main()

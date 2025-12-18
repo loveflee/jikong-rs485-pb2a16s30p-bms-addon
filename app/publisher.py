@@ -129,6 +129,12 @@ class MqttPublisher:
                 "payload_not_available": "offline",
                 "value_template": f"{{{{ value_json['{name_cn}'] }}}}"
             }
+            
+            # 🟢 修正：針對 binary_sensor 定義 1/0 對應 ON/OFF
+            if ha_type == "binary_sensor":
+                payload["payload_on"] = "1"
+                payload["payload_off"] = "0"
+
             if unit and unit not in ("Hex", "Bit", "Enum"):
                 payload["unit_of_measurement"] = unit
 

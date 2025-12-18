@@ -125,5 +125,13 @@ def main():
             if not PACKET_QUEUE.full():
                 PACKET_QUEUE.put((time.time(), pkt_type, pkt_data))
             else:
-                logger.warning("☢️ PACKET_QUEUE 溢位，數據")
+                logger.warning("☢️ PACKET_QUEUE 溢位，數據過多")
+                
+    except KeyboardInterrupt:
+        logger.info("🛑 收到中斷信號，正在停止程式...")
+    except Exception as e:
+        logger.critical(f"💥 主程式發生崩潰: {e}", exc_info=True)
+        sys.exit(1)
 
+if __name__ == "__main__":
+    main()

@@ -12,6 +12,10 @@ from bms_registers import BMS_MAP
 logger = logging.getLogger("jk_bms_publisher")
 
 class MqttPublisher:
+    """
+    v2.0.8 MQTT 發布器：隱藏指令顯示，僅發布實體數據
+    """
+    
     def __init__(self, config_path: str = "/data/config.yaml"):
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"找不到設定檔: {config_path}")
@@ -78,32 +82,13 @@ class MqttPublisher:
             "name": f"JK BMS {device_id if device_id != 0 else '0 (Master)'}", 
         }
 
-    def _publish_master_command_discovery(self, device_id: int):
-        device_info = self._make_device_info(device_id)
-        base_id = f"jk_bms_{device_id}_last_cmd"
-        
-        payload = {
-            "name": "最近一次有效指令",
-            "unique_id": base_id,
-            "object_id": base_id,
-            "state_topic": f"{self.topic_prefix}/{device_id}/command",
-            "device": device_info,
-            "availability_topic": self.status_topic,
-            "payload_available": "online",
-            "payload_not_available": "offline",
-            "value_template": "對象 Slave {{ value_json.target_slave_id }} -> {{ value_json.register }} ({{ value_json.value_hex }})",
-            "icon": "mdi:console-line"
-        }
-        topic = f"{self.discovery_prefix}/sensor/jk_bms_{device_id}/master_cmd/config"
-        self._safe_publish(topic, json.dumps(payload), retain=True)
-
     def publish_discovery_for_packet_type(self, device_id: int, packet_type: int, data_map: Dict[int, Any]):
+        """註冊 HA 實體"""
         key = (device_id, packet_type)
         if key in self._published_discovery: return
         
+        # ⛔ 隱藏邏輯：如果是指令包 (0x10)，直接忽略，不註冊感測器
         if packet_type == 0x10:
-            self._publish_master_command_discovery(device_id)
-            self._published_discovery.add(key)
             return
 
         self._published_discovery.add(key)
@@ -130,7 +115,7 @@ class MqttPublisher:
                 "value_template": f"{{{{ value_json['{name_cn}'] }}}}"
             }
             
-            # 🟢 修正：針對 binary_sensor 定義 1/0 對應 ON/OFF
+            # 定義 binary_sensor 的 ON/OFF 映射
             if ha_type == "binary_sensor":
                 payload["payload_on"] = "1"
                 payload["payload_off"] = "0"
@@ -142,10 +127,10 @@ class MqttPublisher:
             self._safe_publish(topic, json.dumps(payload), retain=True)
 
     def publish_payload(self, device_id: int, packet_type: int, payload_dict: Dict[str, Any]):
+        """發布數據至 MQTT"""
+        
+        # ⛔ 隱藏邏輯：如果是指令包 (0x10)，直接忽略，不發布數據
         if packet_type == 0x10:
-            state_topic = f"{self.topic_prefix}/{device_id}/command"
-            self._safe_publish(state_topic, json.dumps(payload_dict), retain=False)
-            self.publish_discovery_for_packet_type(device_id, 0x10, {})
             return
 
         if packet_type == 0x01:

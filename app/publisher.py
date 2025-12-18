@@ -12,10 +12,6 @@ from bms_registers import BMS_MAP
 logger = logging.getLogger("jk_bms_publisher")
 
 class MqttPublisher:
-    """
-    v2.0.2 MQTT 發布器：支援應答確認過濾與動態 Discovery
-    """
-    
     def __init__(self, config_path: str = "/data/config.yaml"):
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"找不到設定檔: {config_path}")
@@ -29,8 +25,6 @@ class MqttPublisher:
         self.discovery_prefix = self.mqtt_cfg.get("discovery_prefix", "homeassistant")
         self.topic_prefix = self.mqtt_cfg.get("topic_prefix", "Jikong_BMS")
         self.client_id = self.mqtt_cfg.get("client_id", "jk_bms_monitor")
-
-        # 狀態 Topic (LWT)
         self.status_topic = f"{self.topic_prefix}/status"
 
         broker = self.mqtt_cfg.get("host", "core-mosquitto")
@@ -39,18 +33,12 @@ class MqttPublisher:
         password = self.mqtt_cfg.get("password")
 
         self._connected = False
-        self.client = mqtt.Client(
-            client_id=self.client_id,
-            protocol=mqtt.MQTTv311,
-            clean_session=True,
-        )
+        self.client = mqtt.Client(client_id=self.client_id, protocol=mqtt.MQTTv311, clean_session=True)
 
         if username and password:
             self.client.username_pw_set(username=username, password=password)
 
-        # 設定遺囑：Add-on 崩潰時，所有裝置變灰
         self.client.will_set(self.status_topic, payload="offline", qos=1, retain=True)
-
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
 
@@ -91,7 +79,6 @@ class MqttPublisher:
         }
 
     def _publish_master_command_discovery(self, device_id: int):
-        """為監聽到的活動指令建立 HA 感測器"""
         device_info = self._make_device_info(device_id)
         base_id = f"jk_bms_{device_id}_last_cmd"
         
@@ -104,7 +91,6 @@ class MqttPublisher:
             "availability_topic": self.status_topic,
             "payload_available": "online",
             "payload_not_available": "offline",
-            # 修正：對齊 decoder.py 的 target_slave_id
             "value_template": "對象 Slave {{ value_json.target_slave_id }} -> {{ value_json.register }} ({{ value_json.value_hex }})",
             "icon": "mdi:console-line"
         }
@@ -150,15 +136,12 @@ class MqttPublisher:
             self._safe_publish(topic, json.dumps(payload), retain=True)
 
     def publish_payload(self, device_id: int, packet_type: int, payload_dict: Dict[str, Any]):
-        """發布數據至 MQTT (應答過濾版)"""
-        # 🟢 指令包：不使用 Retain，避免看到舊數據
         if packet_type == 0x10:
             state_topic = f"{self.topic_prefix}/{device_id}/command"
             self._safe_publish(state_topic, json.dumps(payload_dict), retain=False)
             self.publish_discovery_for_packet_type(device_id, 0x10, {})
             return
 
-        # 🔵 Settings (0x01) 節流
         if packet_type == 0x01:
             interval = float(self.app_cfg.get("settings_publish_interval", 60))
             if time.time() - self.settings_last_publish.get(device_id, 0) < interval:
@@ -168,7 +151,6 @@ class MqttPublisher:
         kind = "realtime" if packet_type == 0x02 else "settings"
         state_topic = f"{self.topic_prefix}/{device_id}/{kind}"
         
-        # 數據包使用 retain=False，新鮮度由 HA 的 Expire 控制
         self._safe_publish(state_topic, json.dumps(payload_dict), retain=False)
 
         if packet_type in BMS_MAP:

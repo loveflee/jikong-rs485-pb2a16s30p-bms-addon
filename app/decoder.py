@@ -10,22 +10,28 @@ logger = logging.getLogger("jk_bms_decoder")
 def extract_device_address(packet: bytes) -> Optional[int]:
     """
     從 JK BMS 的 0x01 (Settings) 封包中提取硬體位址。
-    修正：還原為 274 (270 + 4)，確保 Master ID 能正確被識別為 0。
+    v2.0.5 修正：同時探測 Offset 274 和 276，專治 Master 地址漂移。
     """
     try:
-        # 如果這裡讀錯，Master 就會變成 Ghost BMS 15
+        # 策略 1: 檢查標準偏移 274
+        val_274 = None
         if len(packet) >= 278:
-            return struct.unpack_from("<I", packet, 274)[0]
-        return None
+            val_274 = struct.unpack_from("<I", packet, 274)[0]
+            if val_274 == 0: return 0  # 抓到了！是 Master
+
+        # 策略 2: 檢查偏移 276 (某些韌體版本)
+        if len(packet) >= 280:
+            val_276 = struct.unpack_from("<I", packet, 276)[0]
+            if val_276 == 0: return 0  # 抓到了！是 Master
+
+        # 如果都不是 0，回傳 274 的值 (預設 Slave 行為)
+        return val_274
     except Exception as e:
         logger.debug(f"提取設備地址失敗: {e}")
         return None
 
 def decode_packet(packet: bytes, p_type: int) -> Dict[str, Any]:
-    """
-    多協議解碼器
-    """
-    # 處理 Modbus 指令
+    # (維持不變，與上一版相同)
     if p_type == 0x10 or p_type == 16:
         try:
             target_sid = packet[0]
@@ -45,7 +51,6 @@ def decode_packet(packet: bytes, p_type: int) -> Dict[str, Any]:
             logger.error(f"Modbus 0x10 解析失敗: {e}")
             return {}
 
-    # 處理 JK BMS 數據
     if p_type not in BMS_MAP:
         return {}
     

@@ -9,23 +9,25 @@ logger = logging.getLogger("jk_bms_decoder")
 
 def extract_device_address(packet: bytes) -> Optional[int]:
     """
-    從 JK BMS 的 0x01 (Settings) 封包中提取硬體位址。
-    v2.0.6 修正：校準絕對偏移量為 270 (Header 6 + Offset 264)。
+    從 JK BMS 的 0x01/0x02 封包中提取硬體位址。
+    v2.0.6 修正：
+    根據 Log 分析，資料正確讀取的位置是 BMS_MAP 的 offset 264。
+    絕對位置 = Header(6) + Offset(264) = 270。
+    之前使用 276 導致 Master(0) 被讀成亂碼，進而被誤判為 Slave 15。
     """
     try:
-        # 策略 1: 優先檢查 270 (對應 BMS_MAP 的 Offset 264)
-        # 這是最準確的 Master/Slave ID 存放位置
+        # 策略 1: 優先檢查 270 (與 BMS_MAP 對齊)
         if len(packet) >= 274:
             val_270 = struct.unpack_from("<I", packet, 270)[0]
-            if val_270 == 0: return 0  # 抓到了！是 Master (0)
+            # 只要這裡讀到 0，main.py 就會強制歸位給 BMS 0
+            if val_270 == 0: return 0 
+            return val_270
 
-        # 策略 2: 相容性檢查 (針對舊版韌體可能在 274)
+        # 策略 2: 相容性檢查 (保留 274 以防萬一)
         if len(packet) >= 278:
-            val_274 = struct.unpack_from("<I", packet, 274)[0]
-            if val_274 == 0: return 0
-
-        # 如果都不是 0，回傳 270 的值 (預設為該位置讀到的 ID)
-        return val_270
+            return struct.unpack_from("<I", packet, 274)[0]
+            
+        return None
     except Exception as e:
         logger.debug(f"提取設備地址失敗: {e}")
         return None

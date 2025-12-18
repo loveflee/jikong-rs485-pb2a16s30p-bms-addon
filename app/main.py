@@ -4,15 +4,15 @@ import sys
 import queue
 import threading
 import logging
-from typing import Optional
 import yaml
 
-# 匯入模組
-from transport import Transport
+# 匯入自定義模組
+# 注意：這裡對應你的 transport.py 中的工廠函數
+from transport import create_transport 
 from decoder import decode_packet, extract_device_address
 from publisher import get_publisher
 
-# 設定 Log
+# 設定 Logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s',
@@ -25,9 +25,16 @@ PACKET_QUEUE = queue.Queue(maxsize=100)
 CONFIG_PATH = "/data/config.yaml"
 
 def load_config():
+    """讀取設定檔供 main 使用"""
     if not os.path.exists(CONFIG_PATH):
+        # 為了本地測試，如果 /data/ 下沒有，嘗試讀取當前目錄
+        local_path = "test_data/config.yaml"
+        if os.path.exists(local_path):
+            with open(local_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
         logger.error(f"❌ 找不到設定檔: {CONFIG_PATH}")
         sys.exit(1)
+        
     with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
 
@@ -38,105 +45,97 @@ def process_packets_worker(app_config):
     publisher = get_publisher(CONFIG_PATH)
     packet_expire_time = app_config.get('packet_expire_time', 1.0)
     
-    # 用來暫存即時數據 (0x02)，等待設定數據 (0x01)
-    # Key: Device Address (int), Value: (timestamp, packet_data)
+    # 暫存 0x02 封包 (Key: 0 代表最後收到的即時數據)
     pending_realtime_packets = {}
 
     logger.info("🔧 封包處理工兵 (Worker) 已啟動")
 
     while True:
         try:
-            # 1. 嘗試從 Queue 拿資料 (Blocking)
-            # 這裡不設 timeout，讓它阻塞等待，避免 busy loop
+            # 從 Queue 獲取封包項 (Blocking)
             packet_item = PACKET_QUEUE.get()
             
-            # ---------------------------------------------------------
-            # 只有當程式執行到這裡，代表 get() 成功了，
-            # 我們才有責任在處理完後呼叫一次 task_done()
-            # ---------------------------------------------------------
-
             timestamp, packet_type, packet_data = packet_item
             
             try:
-                # 處理邏輯
                 if packet_type == 0x02:
-                    # 如果是即時數據 (0x02)，裡面沒有 ID
-                    # 我們先暫存起來，不做任何事，等待下一個 0x01
-                    # 注意：這裡處理完了，就是處理完了，稍後要 task_done
-                    pending_realtime_packets[0] = (timestamp, packet_data) # 暫存到 Key 0 (假設單機或循序)
-                    # 如果你的 Transport 能保證順序，這裡通常暫存最後一筆即可
+                    # 暫存即時數據，等待與下一個 0x01 (ID) 配對
+                    pending_realtime_packets[0] = (timestamp, packet_data)
 
                 elif packet_type == 0x01:
-                    # 如果是設定數據 (0x01)，裡面有 ID
+                    # 這是包含 Device ID 的設定封包
                     device_id = extract_device_address(packet_data)
                     
                     if device_id > 0:
-                        # 1. 解碼並發布 0x01 (Settings)
+                        # 1. 處理並發布 0x01 (Settings)
                         settings_map = decode_packet(packet_data, 0x01)
                         if settings_map:
                             publisher.publish_payload(device_id, 0x01, settings_map)
                         
-                        # 2. 檢查有沒有暫存的 0x02 (Realtime)
+                        # 2. 嘗試配對暫存的 0x02 (Realtime)
                         if 0 in pending_realtime_packets:
                             rt_time, rt_data = pending_realtime_packets.pop(0)
                             
-                            # 檢查是否過期 (配對時間差)
                             time_diff = timestamp - rt_time
+                            # 檢查配對是否在有效時間內
                             if 0 <= time_diff <= packet_expire_time:
-                                # 配對成功！解碼 0x02
                                 realtime_map = decode_packet(rt_data, 0x02)
                                 if realtime_map:
                                     publisher.publish_payload(device_id, 0x02, realtime_map)
                                     logger.info(f"📡 BMS {device_id} 數據更新 (延遲 {time_diff:.3f}s)")
                             else:
-                                logger.warning(f"⚠️ 丟棄過期封包: 延遲 {time_diff:.3f}s > {packet_expire_time}s")
-                    else:
-                        logger.debug(f"⚠️ 無效的設備 ID: {device_id}")
-
+                                logger.warning(f"⚠️ 丟棄過期 0x02 封包: 延遲 {time_diff:.3f}s")
+                
             except Exception as e:
-                logger.error(f"❌ 處理封包時發生錯誤: {e}", exc_info=True)
-            
+                logger.error(f"❌ Worker 處理封包時發生錯誤: {e}")
             finally:
-                # ✅ 關鍵修正：確保每個 get() 只對應一個 task_done()
-                # 無論處理過程是否報錯，只要 get 出來了，就要標記完成
+                # 標記任務完成
                 PACKET_QUEUE.task_done()
 
         except Exception as e:
-            # 這是最外層的防護，避免 Worker 整個崩潰
-            logger.error(f"❌ Worker 迴圈發生嚴重錯誤: {e}", exc_info=True)
-            time.sleep(1) # 避免死迴圈狂刷 log
+            logger.error(f"❌ Worker 發生嚴重錯誤: {e}")
+            time.sleep(1)
 
 def main():
-    print("🚀 啟動主程式 main.py ...")
+    logger.info("🚀 啟動主程式 main.py ...")
     
     # 1. 載入設定
     cfg = load_config()
     app_cfg = cfg.get('app', {})
-    conn_cfg = cfg.get('connection', {}) # 兼容 Go 版結構
-    if not conn_cfg: # 回退舊結構
-        conn_cfg = {
-            'type': cfg.get('connection_type', 'serial'),
-            'serial': cfg.get('serial', {}),
-            'tcp': cfg.get('tcp', {})
-        }
 
-    # 2. 啟動 Publisher (MQTT)
-    # Publisher 會在內部自行連線
+    # 2. 啟動 Publisher (MQTT 註冊與 LWT)
     _ = get_publisher(CONFIG_PATH)
 
-    # 3. 啟動 Worker Thread
-    worker = threading.Thread(target=process_packets_worker, args=(app_cfg,), name="WorkerThread", daemon=True)
+    # 3. 啟動消費者執行緒 (Worker)
+    worker = threading.Thread(
+        target=process_packets_worker, 
+        args=(app_cfg,), 
+        name="WorkerThread", 
+        daemon=True
+    )
     worker.start()
 
-    logger.info("🚀 JiKong BMS main (Async Queue Mode) 啟動...")
-    logger.info(f"⚙️ 封包過期時間: {app_cfg.get('packet_expire_time')}s, Queue大小: {PACKET_QUEUE.maxsize}")
+    logger.info(f"⚙️ 系統初始化完成 (過期時間: {app_cfg.get('packet_expire_time')}s)")
 
-    # 4. 啟動 Transport (Producer) - 這會阻塞主執行緒
-    transport = Transport(conn_cfg, PACKET_QUEUE, app_cfg)
+    # 4. 建立並啟動傳輸層 (Producer)
+    # 使用工廠模式建立實例 (TcpTransport 或 Rs485Transport)
+    transport_inst = create_transport()
+
     try:
-        transport.run()
+        # 開始接收封包生成器
+        # 這裡會根據 config 決定是連線 TCP 還是 開啟 Serial 埠
+        for pkt_type, pkt_data in transport_inst.packets():
+            # 將收到的原始封包打上時間戳後塞入 Queue
+            if not PACKET_QUEUE.full():
+                PACKET_QUEUE.put((time.time(), pkt_type, pkt_data))
+            else:
+                logger.warning("☢️ PACKET_QUEUE 已滿，丟棄封包")
+                
     except KeyboardInterrupt:
-        logger.info("🛑 收到中斷信號，正在停止...")
+        logger.info("🛑 收到中斷信號，正在停止程式...")
+    except Exception as e:
+        logger.critical(f"💥 主程式發生崩潰: {e}", exc_info=True)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

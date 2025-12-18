@@ -125,4 +125,5 @@ def main():
             if not PACKET_QUEUE.full():
                 PACKET_QUEUE.put((time.time(), pkt_type, pkt_data))
             else:
-                logger.warning("☢️ PACKET_QUEUE 溢位，數據
+                logger.warning("☢️ PACKET_QUEUE 溢位，數據")
+

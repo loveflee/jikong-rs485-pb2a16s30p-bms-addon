@@ -1,8 +1,7 @@
-#config.yaml
 name: "JiKong Rs485 PB2A16S30P BMS"
-version: "1.0.6"
+version: "2.0.0"
 slug: "jikong_rs485_pb2a16s30p_bms"
-description: "透過 Modbus gateway 或 RS485 USB 讀取 jikong pb2a16s30p BMS 資料並發佈到 MQTT，供 Home Assistant 使用。"
+description: "全功能監聽版：支援 Modbus Gateway 或 RS485 USB 模式，可同時擷取 BMS 數據與 Master 控制指令。"
 url: "https://github.com/loveflee/jikong-rs485-pb2a16s30p-bms-addon"
 documentation: "https://github.com/loveflee/jikong-rs485-pb2a16s30p-bms-addon"
 arch:
@@ -12,21 +11,14 @@ arch:
 startup: services
 boot: auto
 
-# app 預設值（給程式 /data/config.yaml 參考）
-app:
-  use_modbus_gateway: true      # 使用 TCP Modbus Gateway
-  use_rs485_usb: false          # 使用 RS485 to USB
-  debug_raw_log: false          # 啟用 raw hexdump 除錯模式
-
-# Add-on options（會出現在 HA UI）
+# Add-on 預設選項
 options:
-  # 模式切換
-  use_modbus_gateway: true
-  use_rs485_usb: false
+  # 核心模式選擇 (二選一)
+  connection_mode: "RS485 USB Dongle"
   debug_raw_log: false
-
+  
   # TCP Modbus Gateway 參數
-  modbus_host: "modbus gateway ip"
+  modbus_host: "192.168.1.100"
   modbus_port: 502
   modbus_timeout: 10
   modbus_buffer_size: 4096
@@ -36,7 +28,7 @@ options:
   serial_baudrate: 115200
 
   # MQTT 參數
-  mqtt_host: "core-mosquitto" # homeassistant ip / 內建 broker
+  mqtt_host: "core-mosquitto"
   mqtt_port: 1883
   mqtt_username: "mqtt user"
   mqtt_password: "mqtt password"
@@ -44,23 +36,22 @@ options:
   mqtt_topic_prefix: "Jikong_BMS"
   mqtt_client_id: "jk_bms_monitor"
 
-  # APP 行為
-  packet_expire_time: 0.4
+  # 系統行為 (全功能優化值)
+  packet_expire_time: 2.0
   settings_publish_interval: 60
 
 schema:
-  # 模式切換
-  use_modbus_gateway: bool
-  use_rs485_usb: bool
+  # 💡 核心優化：使用 list 進行互斥選擇，避免同時開啟兩個模式
+  connection_mode: "list(Modbus Gateway TCP|RS485 USB Dongle)"
   debug_raw_log: bool
 
-  # TCP Modbus Gateway 參數
+  # TCP 參數區塊 (當模式選擇 TCP 時填寫)
   modbus_host: str
   modbus_port: int
   modbus_timeout: int
   modbus_buffer_size: int
 
-  # RS485 USB 參數（這兩個會出現在 USB 開關下方）
+  # USB 參數區塊 (當模式選擇 USB 時填寫)
   serial_device: str
   serial_baudrate: int
 
@@ -77,17 +68,12 @@ schema:
   packet_expire_time: float
   settings_publish_interval: int
 
-# 若需要讓容器使用 host network（直接存取本機網路），可啟用此行
-# host_network: true
-
 ports: {}
 map:
   - type: addon_config
     read_only: false
 
-uart:
-  - /dev/ttyUSB0
-  - /dev/ttyUSB1
-  - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port
+# 保持對實體設備的存取權限
+uart: true
 
-panel_icon: mdi:battery
+panel_icon: mdi:battery-bluetooth

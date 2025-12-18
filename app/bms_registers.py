@@ -1,4 +1,5 @@
 # bms_registers.py
+
 # 定義數據類型常量
 TYPE_U8  = 'B'  # Unsigned 8-bit
 TYPE_U16 = 'H'  # Unsigned 16-bit
@@ -15,20 +16,24 @@ conv_none    = lambda v: v                     # 無需轉換
 conv_hex     = lambda v: f"0x{v:08X}"          # 顯示為 HEX
 conv_plus1   = lambda v: v + 1                 # 將索引值 +1
 
-# 新增一個常量方便閱讀 (可選)
+# 新增一個常量方便閱讀
 HA_SENSOR = "sensor"
 HA_BINARY = "binary_sensor"
 
 # BMS Register Map
-# Tuple 結構擴充為:
-# (Name, Unit, Type, Converter, HA_Type, Icon, **English_Key**)
-# 如果後兩項省略，預設為 HA_SENSOR 和 None
+# Tuple 結構: (中文名稱, 單位, 類型, 轉換函數, HA類型, 圖標, 英文Key)
 # ---------------------------------------------------------
-# BMS Register Map (Full Version)
-# Key: Response ID (e.g., 0x01, 0x02)
-# Value: Dictionary of {Offset: (Name, Unit, Type, Converter)}
-# ---------------------------------------------------------
+
 BMS_MAP = {
+    # =====================================================
+    # 0x10: Master Command (新增：用於追蹤控制行為)
+    # =====================================================
+    0x10: {
+        0: ("目標從機ID", None, TYPE_U8, conv_none, HA_SENSOR, "mdi:target-variant", "target_slave_id"),
+        2: ("操作寄存器", "Hex", TYPE_U16, conv_hex, HA_SENSOR, "mdi:memory", "control_register"),
+        7: ("指令數值", "Hex", TYPE_U16, conv_hex, HA_SENSOR, "mdi:numeric", "control_value"),
+    },
+
     # =====================================================
     # 0x01: Parameter Settings (Base 0x1000) - 讀取保護板設定
     # =====================================================
@@ -68,17 +73,16 @@ BMS_MAP = {
         128: ("短路保护延迟", "us", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter", "sc_delay"),
         132: ("均衡起始电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave", "balance_start_voltage"),
         # 136 (0x88) - 260 (0x104): Connection Line Resistance (32組)
-        # 為了不洗版，這裡僅列出前4組，如果需要全部可解開迴圈
 #       136: ("Set: Wire Res 0", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_0"),
 #       140: ("Set: Wire Res 1", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_1"),
 #       144: ("Set: Wire Res 2", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_2"),
 #       148: ("Set: Wire Res 3", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_3"),
-        # ... 中間省略 Wire Res 4-31 ...
         264: ("设备地址", "Hex", TYPE_U32, conv_hex, HA_SENSOR, "mdi:identifier", "device_address"),
 #       268: ("放电预充时间", "S", TYPE_U32, conv_none, HA_BINARY, "mdi:transit-connection-variant", "precharge_time"),
 #       276: ("Func Bits", "Hex", TYPE_U16, conv_hex, HA_SENSOR, None, "func_bits"), # Heating, GPS, etc.
         280: ("智能休眠时间", "H", TYPE_U8, conv_none, HA_SENSOR, "mdi:sleep", "smart_sleep_time"),
     },
+
     # =====================================================
     # 0x02: Realtime Data (Base 0x1200) - 即時監控數據
     # =====================================================
@@ -100,21 +104,19 @@ BMS_MAP = {
         26: ("14單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "cell_14_voltage"),
         28: ("15單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "cell_15_voltage"),
         30: ("16單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "cell_16_voltage"),
-        # 假設只用到 16 串，若更多可繼續加 ...
+        
         # --- Battery Stats ---
-#       64: ("电池状态", "Hex", TYPE_U32, conv_hex, HA_BINARY, "mdi:switch", "battery_status"), # Which cells exist
+#       64: ("电池状态", "Hex", TYPE_U32, conv_hex, HA_BINARY, "mdi:switch", "battery_status"),
         68: ("平均电压", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "avg_voltage"),
         70: ("最大压差", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "max_diff_voltage"),
-        # 將單位 "S" 改為 None，圖標建議用 mdi:format-list-numbered 或 mdi:numeric
         72: ("最大單體", None, TYPE_U8, conv_plus1, HA_SENSOR, "mdi:format-list-numbered", "max_cell_index"),
-        73: ("最小單體", None, TYPE_U8, conv_plus1, HA_SENSOR, "mdi:format-list-numbered", "min_cell_index"), # Offset 72 is U8(Max), next byte is Min
+        73: ("最小單體", None, TYPE_U8, conv_plus1, HA_SENSOR, "mdi:format-list-numbered", "min_cell_index"),
 
-        # --- Balance Wire Resistances (0x4A - 0x88) ---
+        # --- Balance Wire Resistances ---
 #       74: ("Wire Res 0", "mΩ", TYPE_U16, conv_none, HA_SENSOR, None, "wire_res_0"),
 #       76: ("Wire Res 1", "mΩ", TYPE_U16, conv_none, HA_SENSOR, None, "wire_res_1"),
 #       78: ("Wire Res 2", "mΩ", TYPE_U16, conv_none, HA_SENSOR, None, "wire_res_2"),
 #       80: ("Wire Res 3", "mΩ", TYPE_U16, conv_none, HA_SENSOR, None, "wire_res_3"),
-        # ... 這裡還有很多組，為版面整潔只列出前幾組 ...
 
         # --- Temps & Power ---
         138: ("功率板温度", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius", "power_board_temp"),
@@ -126,9 +128,9 @@ BMS_MAP = {
         158: ("电池温度2", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius", "temp_sensor_2"),
 
         # --- Alarms & Status ---
-#       160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex , HA_SENSOR, "mdi:switch", "alarm_bits_1"), # 包含過壓、過流等報警
+#       160: ("Alarm Bits 1", "Hex", TYPE_U32, conv_hex , HA_SENSOR, "mdi:switch", "alarm_bits_1"),
         164: ("均衡电流", "mA", TYPE_I16, conv_none, HA_SENSOR, "mdi:current-dc", "balance_current"),
-        166: ("均衡:1充2放", "Enum", TYPE_U8, conv_none, HA_SENSOR, "mdi:scale-balance", "balance_action"), # 0:Off, 1:Chg, 2:Dchg
+        166: ("均衡:1充2放", "Enum", TYPE_U8, conv_none, HA_SENSOR, "mdi:scale-balance", "balance_action"),
         167: ("剩余电量", "%", TYPE_U8, conv_none, HA_SENSOR, "mdi:battery", "soc_percent"),
         168: ("剩余容量", "Ah", TYPE_I32, conv_div1000, HA_SENSOR, "mdi:battery", "remaining_capacity_ah"),
         172: ("电池实际容量", "Ah", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:battery", "actual_capacity_ah"),
@@ -138,8 +140,8 @@ BMS_MAP = {
 #       185: ("预充状态", "Bit", TYPE_U8, conv_none, HA_SENSOR, None, "precharge_status"),
 #       186: ("用户层报警", "Hex", TYPE_U16, conv_hex , HA_BINARY, "mdi:switch", "user_alarms"),
         188: ("运行时间", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter", "runtime_seconds"),
-        192: ("充电状态", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch", "charge_status_hex"), # High byte/Low byte mix
-#       193: ("放电状态", "Hex", TYPE_U16, conv_hex, HA_SENSOR, None, "discharge_status_hex"), # High byte/Low byte mix
+        192: ("充电状态", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch", "charge_status_hex"),
+#       193: ("放电状态", "Hex", TYPE_U16, conv_hex, HA_SENSOR, None, "discharge_status_hex"),
 #       194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch", "user_alarms_2"),
 
         # --- Protection Release Times ---

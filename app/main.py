@@ -66,18 +66,19 @@ def load_ui_config():
 
 def process_packets_worker(app_config):
     """
-    v2.0.2 應答確認型消費者：
-    還原原本點名歸屬邏輯 (BMS 0, 1, 2...)，
-    僅針對 0x10 指令實施「應答後發布」的降噪優化。
+    v2.0.3 邏輯修正：
+    1. 恢復 BMS 0 (Master) 的絕對優先權。
+    2. 恢復 BMS 1-15 的點名歸屬機制。
+    3. 保持 0x10 指令的應答過濾優化。
     """
     publisher = get_publisher(CONFIG_PATH)
     packet_expire_time = app_config.get('packet_expire_time', 2.0)
     
-    # 狀態追蹤器 (還原原本邏輯)
+    # 狀態追蹤器
     last_polled_slave_id = None
     last_poll_timestamp = 0
-    pending_cmds = {}          # 暫存掛起的點名指令: {slave_id: cmd_map}
-    pending_realtime_data = {} # 暫存最近一次收到的 0x02 數據包
+    pending_cmds = {}          # 暫存掛起的點名指令
+    pending_realtime_data = {} # 暫存 0x02 數據包
 
     logger = logging.getLogger("worker")
 
@@ -87,14 +88,14 @@ def process_packets_worker(app_config):
             timestamp, packet_type, packet_data = packet_item
             
             try:
-                # 🟢 1. 監聽到 Master 指令 (0x10) -> 更新點名簿並「暫存」指令內容
+                # 🟢 1. 監聽到 Master 指令 (0x10) -> 更新點名狀態
                 if packet_type == 0x10:
                     cmd_map = decode_packet(packet_data, 0x10)
                     if cmd_map:
                         target_id = cmd_map.get("target_slave_id")
                         last_polled_slave_id = target_id
                         last_poll_timestamp = timestamp
-                        # 將指令掛起，不立即發布，等待 Slave 應答
+                        # 暫存指令，等待回應後才發布
                         pending_cmds[target_id] = cmd_map
                     continue 
 
@@ -103,40 +104,46 @@ def process_packets_worker(app_config):
                     pending_realtime_data["last"] = (timestamp, packet_data)
                     continue
 
-                # 🔴 3. 處理 JK BMS 回應封包 (0x01) -> 觸發原本歸屬判定與指令釋放
+                # 🔴 3. 處理 JK BMS 回應封包 (0x01) -> 判定身份並發布
                 if packet_type == 0x01:
                     hw_id = extract_device_address(packet_data)
                     if hw_id is None: continue
 
-                    # --- 還原原本的 ID 歸屬邏輯 (BMS 0, 1, 2...) ---
+                    # --- 🔥 核心修正：身份判定邏輯 🔥 ---
+                    target_publish_id = None
+
                     if hw_id == 0:
+                        # 情況 A：硬體 ID 為 0，這絕對是 Master (BMS 0)
+                        # 無視 Master 剛才點名點到誰，Master 自己就是 0
                         target_publish_id = 0
                     else:
-                        # 非 Master 數據，一律歸類給目前被點名的 Slave ID
+                        # 情況 B：硬體 ID 不為 0，這是 Slave
+                        # 它的身份由「目前 Master 正在點名的 ID」決定
                         target_publish_id = last_polled_slave_id
 
+                    # 只有確定了 ID 才進行發布
                     if target_publish_id is not None:
-                        # 🔹 升級點：只有在此序號有回應時，才發布掛載在該 ID 下的指令
+                        
+                        # (A) 發布指令：如果此 ID 有掛起的指令，現在發布
                         if target_publish_id in pending_cmds:
                             publisher.publish_payload(target_publish_id, 0x10, pending_cmds.pop(target_publish_id))
                         
-                        # 清理過期指令緩衝 (超過 5 秒未應答則視為失敗)
-                        expired_ids = [sid for sid in pending_cmds if (timestamp - last_poll_timestamp) > 5.0]
-                        for sid in expired_ids: pending_cmds.pop(sid, None)
-
-                        # 發布 0x01 設定資訊
+                        # (B) 發布設定數據 (0x01)
                         settings_map = decode_packet(packet_data, 0x01)
                         if settings_map:
                             publisher.publish_payload(target_publish_id, 0x01, settings_map)
                         
-                        # 發布對應的 0x02 即時數據
+                        # (C) 發布即時數據 (0x02)
                         if "last" in pending_realtime_data:
                             rt_time, rt_data = pending_realtime_data.pop("last")
-                            # 檢查數據新鮮度
                             if (timestamp - rt_time) <= packet_expire_time:
                                 realtime_map = decode_packet(rt_data, 0x02)
                                 if realtime_map:
                                     publisher.publish_payload(target_publish_id, 0x02, realtime_map)
+
+                    # 清理過期指令 (防止斷線 Slave 的指令堆積)
+                    if (timestamp - last_poll_timestamp) > 5.0:
+                        pending_cmds.clear()
 
             except Exception as e:
                 logger.error(f"解析錯誤: {e}")
@@ -147,7 +154,6 @@ def process_packets_worker(app_config):
             time.sleep(1)
 
 def main():
-    # 🚀 載入介面設定
     full_cfg = load_ui_config()
     app_cfg = full_cfg.get('app', {})
     
@@ -159,19 +165,16 @@ def main():
     
     logger = logging.getLogger("main")
     logger.info("==========================================")
-    logger.info("🚀 JiKong BMS 指令導引監控系統 v2.0.2")
-    logger.info("✅ 模式: 應答確認降噪版 (Response-Validated)")
+    logger.info("🚀 JiKong BMS 指令導引監控系統 v2.0.3")
+    logger.info("✅ 邏輯修正: Master 優先權回歸 + 指令應答確認")
     logger.info(f"📡 介面: {'USB 直連' if app_cfg.get('use_rs485_usb') else 'TCP 網關'}")
     logger.info("==========================================")
     
-    # 預熱發布器
     _ = get_publisher(CONFIG_PATH)
     
-    # 啟動智能消費者執行緒
     worker = threading.Thread(target=process_packets_worker, args=(app_cfg,), daemon=True)
     worker.start()
 
-    # 啟動傳輸層 (生產者)
     transport_inst = create_transport()
     try:
         for pkt_type, pkt_data in transport_inst.packets():
@@ -180,9 +183,9 @@ def main():
             else:
                 logger.warning("⚠️ 隊列已滿，請檢查系統效能")
     except KeyboardInterrupt:
-        logger.info("🛑 系統手動停止")
+        logger.info("🛑 系統停止")
     except Exception as e:
-        logger.error(f"💥 傳輸層崩潰: {e}")
+        logger.error(f"💥 傳輸層崩倉: {e}")
 
 if __name__ == "__main__":
     main()

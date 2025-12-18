@@ -14,13 +14,14 @@ except ImportError:
 logger = logging.getLogger("jk_bms_transport")
 CONFIG_PATH = "/data/config.yaml"
 HEADER_JK = b"\x55\xAA\xEB\x90"
-# 根據你的 Log 定義 Master 指令的 ID 與功能碼 0x10 (Write Multi Registers)
-MASTER_LIST = [0x0F, 0x01, 0x02, 0x03]
+# Master 可能使用的 ID 範圍
+MASTER_LIST = [0x0F, 0x01, 0x02, 0x03, 0x00] 
 
 class BaseTransport(ABC):
     def __init__(self, cfg: dict):
         self.serial_cfg = cfg.get("serial", {})
         self.app_cfg = cfg.get("app", {})
+        self.buffer_size = int(cfg.get("tcp", {}).get("buffer_size", 4096))
         self.debug_raw_log = bool(self.app_cfg.get("debug_raw_log", False))
 
     @abstractmethod
@@ -37,7 +38,7 @@ class Rs485Transport(BaseTransport):
             ser = None
             try:
                 ser = serial.Serial(port=device, baudrate=baud, timeout=timeout)
-                logger.info(f"🔌 連線成功: {device} (監聽 Master 指令 & JK BMS)")
+                logger.info(f"🔌 連線成功: {device} (監聽所有 ID 包含 Master)")
                 buffer = bytearray()
 
                 while True:
@@ -49,16 +50,15 @@ class Rs485Transport(BaseTransport):
                     buffer.extend(data)
 
                     while True:
-                        # 搜尋 JK 標頭與 Master 標頭
                         jk_idx = buffer.find(HEADER_JK)
                         mb_idx = -1
+                        # 搜尋 Modbus 寫入指令
                         for mid in MASTER_LIST:
                             idx = buffer.find(bytes([mid, 0x10]))
                             if idx != -1 and (mb_idx == -1 or idx < mb_idx):
                                 mb_idx = idx
 
                         if jk_idx != -1 and (mb_idx == -1 or jk_idx < mb_idx):
-                            # 處理 JK 封包
                             if len(buffer) < jk_idx + 6: break
                             p_type = buffer[jk_idx + 4]
                             p_len = 308 if p_type == 0x02 else 300
@@ -68,7 +68,6 @@ class Rs485Transport(BaseTransport):
                                 continue
                             else: break
                         elif mb_idx != -1:
-                            # 處理 Master Modbus 指令 (固定 11 bytes)
                             if len(buffer) >= mb_idx + 11:
                                 yield 0x10, bytes(buffer[mb_idx : mb_idx + 11])
                                 del buffer[:mb_idx + 11]

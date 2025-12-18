@@ -1,47 +1,32 @@
 import struct
-import logging
 from typing import Dict, Any
 from bms_registers import BMS_MAP
 
-logger = logging.getLogger("jk_bms_decoder")
-
-def extract_device_address(packet_0x01: bytes) -> int:
+def extract_device_address(packet: bytes) -> int:
     try:
-        if len(packet_0x01) >= 274:
-            return struct.unpack_from("<I", packet_0x01, 270)[0]
-        return 0
-    except Exception:
-        return 0
+        return struct.unpack_from("<I", packet, 270)[0] if len(packet) >= 274 else 0
+    except: return 0
 
-def decode_packet(packet: bytes, packet_type: int) -> Dict[str, Any]:
-    # ✅ 還原 Master 指令解析邏輯
-    if packet_type == 0x10:
-        try:
-            return {
-                "msg_type": "master_command",
-                "slave_id": packet[0],
-                "function": packet[1],
-                "register": f"0x{packet[2:4].hex().upper()}",
-                "value_raw": packet[7:9].hex().upper(),
-                "description": "Master Register Write"
-            }
-        except Exception:
-            return {}
+def decode_packet(packet: bytes, p_type: int) -> Dict[str, Any]:
+    # ✅ 還原 Master 指令解析
+    if p_type == 0x10:
+        return {
+            "type": "master_cmd",
+            "slave_id": packet[0],
+            "function": f"0x{packet[1]:02X}",
+            "register": f"0x{packet[2:4].hex().upper()}",
+            "value": f"0x{packet[7:9].hex().upper()}"
+        }
 
     # JK BMS 解析
-    if packet_type not in BMS_MAP: return {}
-    
-    register_def = BMS_MAP[packet_type]
-    payload = {}
-    base_index = 6
-
-    for offset, entry in register_def.items():
-        name, _, dtype, converter, *_ = entry
-        abs_offset = base_index + offset
-        if abs_offset < len(packet):
+    if p_type not in BMS_MAP: return {}
+    res = {}
+    for off, entry in BMS_MAP[p_type].items():
+        name, _, dtype, conv, *_ = entry
+        abs_off = 6 + off
+        if abs_off < len(packet):
             try:
-                raw_val = struct.unpack_from(f"<{dtype}", packet, abs_offset)[0]
-                payload[name] = converter(raw_val) if converter else raw_val
-            except Exception:
-                continue
-    return payload
+                raw = struct.unpack_from(f"<{dtype}", packet, abs_off)[0]
+                res[name] = conv(raw) if conv else raw
+            except: continue
+    return res

@@ -1,3 +1,5 @@
+# main.py
+
 import time
 import os
 import sys
@@ -12,10 +14,10 @@ from transport import create_transport
 from decoder import decode_packet, extract_device_address
 from publisher import get_publisher
 
-# 全域隊列
+# 全域隊列：加速生產者與消費者分離
 PACKET_QUEUE = queue.Queue(maxsize=500)
-OPTIONS_PATH = "/data/options.json"
-CONFIG_PATH = "/data/config.yaml"
+OPTIONS_PATH = "/data/options.json"  # Home Assistant 標準路徑
+CONFIG_PATH = "/data/config.yaml"    # 內部映射路徑
 
 def load_ui_config():
     """解析 HA UI 設定並同步至 config.yaml"""
@@ -65,16 +67,17 @@ def load_ui_config():
 def process_packets_worker(app_config):
     """
     v2.0.2 應答確認型消費者：
-    只有在收到 Slave 回應時，才發布 Master 的點名指令，實現數據與指令的精確同步。
+    還原原本點名歸屬邏輯 (BMS 0, 1, 2...)，
+    僅針對 0x10 指令實施「應答後發布」的降噪優化。
     """
     publisher = get_publisher(CONFIG_PATH)
     packet_expire_time = app_config.get('packet_expire_time', 2.0)
     
-    # 狀態追蹤器
+    # 狀態追蹤器 (還原原本邏輯)
     last_polled_slave_id = None
     last_poll_timestamp = 0
     pending_cmds = {}          # 暫存掛起的點名指令: {slave_id: cmd_map}
-    pending_realtime_data = {} # 暫存最近一次收到的 0x02 數據包: {"last": (ts, data)}
+    pending_realtime_data = {} # 暫存最近一次收到的 0x02 數據包
 
     logger = logging.getLogger("worker")
 
@@ -84,14 +87,14 @@ def process_packets_worker(app_config):
             timestamp, packet_type, packet_data = packet_item
             
             try:
-                # 🟢 1. 監聽到 Master 指令 (0x10) -> 僅暫存，不發布
+                # 🟢 1. 監聽到 Master 指令 (0x10) -> 更新點名簿並「暫存」指令
                 if packet_type == 0x10:
                     cmd_map = decode_packet(packet_data, 0x10)
                     if cmd_map:
                         target_id = cmd_map.get("target_slave_id")
                         last_polled_slave_id = target_id
                         last_poll_timestamp = timestamp
-                        # 將指令掛起，等待對應 ID 的 Slave 回應
+                        # 指令掛起，不立即發布
                         pending_cmds[target_id] = cmd_map
                     continue 
 
@@ -100,43 +103,39 @@ def process_packets_worker(app_config):
                     pending_realtime_data["last"] = (timestamp, packet_data)
                     continue
 
-                # 🔴 3. 處理 JK BMS 回應封包 (0x01) -> 觸發確認發布
+                # 🔴 3. 處理 JK BMS 回應封包 (0x01) -> 觸發原本歸屬判定與指令釋放
                 if packet_type == 0x01:
                     hw_id = extract_device_address(packet_data)
                     if hw_id is None: continue
 
-                    # A. 若此 ID 有掛起的指令，且時序在有效期內，現在發布
-                    if hw_id in pending_cmds:
-                        # 只有當 Slave 真的回傳 ID 包，代表通訊成功，才發布該指令
-                        publisher.publish_payload(hw_id, 0x10, pending_cmds.pop(hw_id))
-                    
-                    # 清理過期點名 (防止斷線 ID 的指令一直殘留)
-                    expired_ids = [sid for sid, cmd in pending_cmds.items() if (timestamp - last_poll_timestamp) > 5.0]
-                    for sid in expired_ids: pending_cmds.pop(sid, None)
+                    # --- 還原原本的 ID 歸屬邏輯 (BMS 0, 1, 2...) ---
+                    if hw_id == 0:
+                        target_publish_id = 0
+                    else:
+                        # 使用 Master 剛才點名的序號作為 HA 的顯示 ID
+                        target_publish_id = last_polled_slave_id
 
-                    # B. 發布設定/ID 資訊 (0x01)
-                    settings_map = decode_packet(packet_data, 0x01)
-                    if settings_map:
-                        publisher.publish_payload(hw_id, 0x01, settings_map)
-                    
-                    # C. 判定數據包 (0x02) 歸屬並發布
-                    if "last" in pending_realtime_data:
-                        rt_time, rt_data = pending_realtime_data.pop("last")
+                    if target_publish_id is not None:
+                        # 🔹 升級點：只有在此序號有回應時，才發布它的 0x10 指令
+                        if target_publish_id in pending_cmds:
+                            publisher.publish_payload(target_publish_id, 0x10, pending_cmds.pop(target_publish_id))
                         
-                        # 判定規則：
-                        # 1. 自報為 ID 0 優先
-                        # 2. 點名引導優先 (hw_id == last_polled_slave_id)
-                        # 3. 時序窗口校驗
-                        target_id = None
-                        if hw_id == 0:
-                            target_id = 0
-                        elif (timestamp - rt_time) <= packet_expire_time:
-                            target_id = hw_id
+                        # 清理過期指令緩衝
+                        expired_ids = [sid for sid in pending_cmds if (timestamp - last_poll_timestamp) > 5.0]
+                        for sid in expired_ids: pending_cmds.pop(sid, None)
+
+                        # 發布 0x01 設定資訊
+                        settings_map = decode_packet(packet_data, 0x01)
+                        if settings_map:
+                            publisher.publish_payload(target_publish_id, 0x01, settings_map)
                         
-                        if target_id is not None:
-                            realtime_map = decode_packet(rt_data, 0x02)
-                            if realtime_map:
-                                publisher.publish_payload(target_id, 0x02, realtime_map)
+                        # 發布對應的 0x02 即時數據 (維持原本變灰機制)
+                        if "last" in pending_realtime_data:
+                            rt_time, rt_data = pending_realtime_data.pop("last")
+                            if (timestamp - rt_time) <= packet_expire_time:
+                                realtime_map = decode_packet(rt_data, 0x02)
+                                if realtime_map:
+                                    publisher.publish_payload(target_publish_id, 0x02, realtime_map)
 
             except Exception as e:
                 logger.error(f"解析錯誤: {e}")

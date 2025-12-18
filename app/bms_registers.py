@@ -16,26 +16,25 @@ conv_none    = lambda v: v                     # 無需轉換
 conv_hex     = lambda v: f"0x{v:08X}"          # 顯示為 HEX
 conv_plus1   = lambda v: v + 1                 # 將索引值 +1
 
-# 新增一個常量方便閱讀
+# Home Assistant 實體類型
 HA_SENSOR = "sensor"
 HA_BINARY = "binary_sensor"
 
-# BMS Register Map
-# Tuple 結構: (中文名稱, 單位, 類型, 轉換函數, HA類型, 圖標, 英文Key)
 # ---------------------------------------------------------
-
+# BMS Register Map (Full Version with Logic Audit)
+# ---------------------------------------------------------
 BMS_MAP = {
     # =====================================================
-    # 0x10: Master Command (新增：用於追蹤控制行為)
+    # 0x10: Master Command (優化對齊：用於追蹤有效控制行為)
     # =====================================================
     0x10: {
         0: ("目標從機ID", None, TYPE_U8, conv_none, HA_SENSOR, "mdi:target-variant", "target_slave_id"),
-        2: ("操作寄存器", "Hex", TYPE_U16, conv_hex, HA_SENSOR, "mdi:memory", "control_register"),
-        7: ("指令數值", "Hex", TYPE_U16, conv_hex, HA_SENSOR, "mdi:numeric", "control_value"),
+        2: ("操作寄存器", "Hex", TYPE_U16, conv_hex, HA_SENSOR, "mdi:memory", "register"),
+        7: ("指令數值", "Hex", TYPE_U16, conv_hex, HA_SENSOR, "mdi:numeric", "value_hex"),
     },
 
     # =====================================================
-    # 0x01: Parameter Settings (Base 0x1000) - 讀取保護板設定
+    # 0x01: Parameter Settings (Base 0x1000) - 保護板參數設定
     # =====================================================
     0x01: {
         0:   ("进入休眠电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sleep", "sleep_voltage"),
@@ -72,7 +71,7 @@ BMS_MAP = {
 #       124: ("电池设计容量", "mAH", TYPE_U32, conv_none, HA_SENSOR, "mdi:battery", "design_capacity"),
         128: ("短路保护延迟", "us", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter", "sc_delay"),
         132: ("均衡起始电压", "V", TYPE_U32, conv_div1000, HA_SENSOR, "mdi:sine-wave", "balance_start_voltage"),
-        # 136 (0x88) - 260 (0x104): Connection Line Resistance (32組)
+        # 136 (0x88) - 260 (0x104): Connection Line Resistance (32組採樣線電阻)
 #       136: ("Set: Wire Res 0", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_0"),
 #       140: ("Set: Wire Res 1", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_1"),
 #       144: ("Set: Wire Res 2", "uΩ", TYPE_U32, conv_none, HA_SENSOR, None, "wire_res_2"),
@@ -84,10 +83,10 @@ BMS_MAP = {
     },
 
     # =====================================================
-    # 0x02: Realtime Data (Base 0x1200) - 即時監控數據
+    # 0x02: Realtime Data (Base 0x1200) - 即時數據
     # =====================================================
     0x02: {
-        # --- Cell Voltages (0x00 - 0x3E) ---
+        # --- Cell Voltages (單體電壓 01-16) ---
         0:  ("01單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "cell_01_voltage"),
         2:  ("02單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "cell_02_voltage"),
         4:  ("03單體電壓", "V", TYPE_U16, conv_div1000, HA_SENSOR, "mdi:sine-wave", "cell_03_voltage"),
@@ -112,7 +111,7 @@ BMS_MAP = {
         72: ("最大單體", None, TYPE_U8, conv_plus1, HA_SENSOR, "mdi:format-list-numbered", "max_cell_index"),
         73: ("最小單體", None, TYPE_U8, conv_plus1, HA_SENSOR, "mdi:format-list-numbered", "min_cell_index"),
 
-        # --- Balance Wire Resistances ---
+        # --- Balance Wire Resistances (0x4A - 0x88) ---
 #       74: ("Wire Res 0", "mΩ", TYPE_U16, conv_none, HA_SENSOR, None, "wire_res_0"),
 #       76: ("Wire Res 1", "mΩ", TYPE_U16, conv_none, HA_SENSOR, None, "wire_res_1"),
 #       78: ("Wire Res 2", "mΩ", TYPE_U16, conv_none, HA_SENSOR, None, "wire_res_2"),
@@ -145,16 +144,15 @@ BMS_MAP = {
 #       194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch", "user_alarms_2"),
 
         # --- Protection Release Times ---
-        196: ("放电过流保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_ocp_release_time"),
-        198: ("放电短路保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_sc_release_time"),
-        200: ("充电过流保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_ocp_release_time"),
-        202: ("充电短路保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_sc_release_time"),
-        204: ("单体欠压保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_uvp_release_time"),
-        206: ("单体过压保护解除时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_ovp_release_time"),
+        196: ("放电过流保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_ocp_release_time"),
+        198: ("放电短路保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "discharge_sc_release_time"),
+        200: ("充电过流保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_ocp_release_time"),
+        202: ("充电短路保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "charge_sc_release_time"),
+        204: ("单体欠压保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_uvp_release_time"),
+        206: ("单体过压保护解除時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "cell_ovp_release_time"),
 
-        # --- Missing Sensors ---
 #       208: ("Sensor Status", "Hex", TYPE_U16, conv_hex, HA_SENSOR, None, "sensor_status"),
-        212: ("应急开关时间", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "emergency_switch_time"),
+        212: ("应急开关時間", "S", TYPE_U16, conv_none, HA_SENSOR, "mdi:counter", "emergency_switch_time"),
 
         # --- Calibration/Other ---
 #       240: ("SysRunTicks", "0.1S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter", "sys_run_ticks"),
@@ -162,8 +160,10 @@ BMS_MAP = {
         250: ("电池温度4", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius", "temp_sensor_4"),
         252: ("电池温度5", "°C", TYPE_I16, conv_div10, HA_SENSOR, "mdi:temperature-celsius", "temp_sensor_5"),
 #       256: ("RTC计数器", "Tick", TYPE_U32, conv_none, HA_SENSOR, "mdi:numeric", "rtc_counter"),
-        264: ("进入休眠时间", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:sleep", "sleep_time_seconds"),
-#       268: ("并联限流模块状态", "Bit", TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging", "parallel_limiter_status"),
+        264: ("进入休眠時間", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:sleep", "sleep_time_seconds"),
+#       268: ("并聯限流模块狀態", "Bit", TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging", "parallel_limiter_status"),
+
+        # --- 🟢 重新補回 9001/9002 狀態開關 ---
 #       9001: ("充电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging", "charge_mos"),
 #       9002: ("放电开关", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-arrow-down", "discharge_mos")
     }

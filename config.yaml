@@ -1,5 +1,5 @@
 name: "JiKong Rs485 PB2A16S30P BMS"
-version: "2.0.3"
+version: "2.0.4"
 slug: "jikong_rs485_pb2a16s30p_bms"
 description: "指令導引監控版：利用 Master 點名邏輯實現極致穩健的數據歸屬判定。"
 url: "https://github.com/loveflee/jikong-rs485-pb2a16s30p-bms-addon"

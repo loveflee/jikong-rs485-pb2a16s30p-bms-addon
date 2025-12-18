@@ -124,9 +124,10 @@ def process_packets_worker(app_config):
                     # 只有確定了 ID 才進行發布
                     if target_publish_id is not None:
                         
-                        # (A) 發布指令：如果此 ID 有掛起的指令，現在發布
+                        # (A) 發布指令：如果此 ID 有掛起的指令，現在發布到 BMS 0 (Master) 的指令紀錄中
+                        # 邏輯：Master 下達了指令給 target_publish_id，且對方有回應
                         if target_publish_id in pending_cmds:
-                            publisher.publish_payload(target_publish_id, 0x10, pending_cmds.pop(target_publish_id))
+                            publisher.publish_payload(0, 0x10, pending_cmds.pop(target_publish_id))
                         
                         # (B) 發布設定數據 (0x01)
                         settings_map = decode_packet(packet_data, 0x01)

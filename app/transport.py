@@ -18,7 +18,7 @@ CONFIG_PATH = "/data/config.yaml"
 HEADER_JK = b"\x55\xAA\xEB\x90"
 
 # Master 指令監控清單
-MASTER_LIST = [bytes([i, 0x10]) for i in range(16)] 
+MASTER_LIST = [bytes([i, 0x10]) for i in range(16)]
 
 class BaseTransport(ABC):
     def __init__(self, cfg: dict):
@@ -49,14 +49,14 @@ class BaseTransport(ABC):
                     del buffer[:jk_idx + p_len]
                     continue
                 else: break
-            
+
             elif mb_idx != -1:
                 if len(buffer) >= mb_idx + 11:
                     yield 0x10, bytes(buffer[mb_idx : mb_idx + 11])
                     del buffer[:mb_idx + 11]
                     continue
                 else: break
-            
+
             else:
                 if len(buffer) > 2048:
                     del buffer[:1024]
@@ -66,7 +66,7 @@ class Rs485Transport(BaseTransport):
     def packets(self) -> Generator[Tuple[int, bytes], None, None]:
         device = self.serial_cfg.get("device", "/dev/ttyUSB0")
         baud = int(self.serial_cfg.get("baudrate", 115200))
-        
+
         while True:
             ser = None
             try:

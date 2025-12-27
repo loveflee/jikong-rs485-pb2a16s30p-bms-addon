@@ -20,13 +20,13 @@ def extract_device_address(packet: bytes) -> Optional[int]:
         if len(packet) >= 274:
             val_270 = struct.unpack_from("<I", packet, 270)[0]
             # 只要這裡讀到 0，main.py 就會強制歸位給 BMS 0
-            if val_270 == 0: return 0 
+            if val_270 == 0: return 0
             return val_270
 
         # 策略 2: 相容性檢查 (保留 274 以防萬一)
         if len(packet) >= 278:
             return struct.unpack_from("<I", packet, 274)[0]
-            
+
         return None
     except Exception as e:
         logger.debug(f"提取設備地址失敗: {e}")
@@ -43,7 +43,7 @@ def decode_packet(packet: bytes, p_type: int) -> Dict[str, Any]:
             reg_addr = f"0x{packet[2:4].hex().upper()}"
             val_hex = f"0x{packet[7:9].hex().upper()}"
             val_int = struct.unpack(">H", packet[7:9])[0]
-            
+
             return {
                 "msg_type": "master_cmd",
                 "target_slave_id": target_sid,
@@ -59,16 +59,16 @@ def decode_packet(packet: bytes, p_type: int) -> Dict[str, Any]:
     # 處理 JK BMS 廣播數據
     if p_type not in BMS_MAP:
         return {}
-    
+
     res = {}
     register_def = BMS_MAP[p_type]
-    base_index = 6 
-    
+    base_index = 6
+
     for off, entry in register_def.items():
         name = entry[0]
         dtype = entry[2]
         conv = entry[3] if len(entry) > 3 else None
-        
+
         abs_off = base_index + off
         if abs_off + struct.calcsize(f"<{dtype}") <= len(packet):
             try:
@@ -76,5 +76,5 @@ def decode_packet(packet: bytes, p_type: int) -> Dict[str, Any]:
                 res[name] = conv(raw) if conv else raw
             except Exception:
                 continue
-                
+
     return res

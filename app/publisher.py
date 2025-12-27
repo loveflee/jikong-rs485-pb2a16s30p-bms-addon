@@ -15,7 +15,7 @@ class MqttPublisher:
     """
     v2.0.8 MQTT 發布器：隱藏指令顯示，僅發布實體數據
     """
-    
+
     def __init__(self, config_path: str = "/data/config.yaml"):
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"找不到設定檔: {config_path}")
@@ -25,7 +25,7 @@ class MqttPublisher:
 
         self.mqtt_cfg = full_cfg.get("mqtt", {})
         self.app_cfg = full_cfg.get("app", {})
-        
+
         self.discovery_prefix = self.mqtt_cfg.get("discovery_prefix", "homeassistant")
         self.topic_prefix = self.mqtt_cfg.get("topic_prefix", "Jikong_BMS")
         self.client_id = self.mqtt_cfg.get("client_id", "jk_bms_monitor")
@@ -48,7 +48,7 @@ class MqttPublisher:
 
         try:
             self.client.connect_async(broker, port, keepalive=60)
-            self.client.loop_start() 
+            self.client.loop_start()
             logger.info(f"📡 MQTT 啟動: {broker}:{port}")
         except Exception as e:
             logger.error(f"❌ MQTT 啟動失敗: {e}")
@@ -75,18 +75,21 @@ class MqttPublisher:
         except Exception: return False
 
     def _make_device_info(self, device_id: int) -> Dict[str, Any]:
+        """
+        🟢 修改：更新設備製造商與型號資訊
+        """
         return {
             "identifiers": [f"jk_bms_{device_id}"],
-            "manufacturer": "JiKong",
-            "model": "JK-BMS-Parallel",
-            "name": f"JK BMS {device_id if device_id != 0 else '0 (Master)'}", 
+            "manufacturer": "JiKong (JK-BMS)",
+            "model": "PB2A16S30P (RS485/Parallel)",
+            "name": f"JK BMS {device_id if device_id != 0 else '0 (Master)'}",
         }
 
     def publish_discovery_for_packet_type(self, device_id: int, packet_type: int, data_map: Dict[int, Any]):
         """註冊 HA 實體"""
         key = (device_id, packet_type)
         if key in self._published_discovery: return
-        
+
         # ⛔ 隱藏邏輯：如果是指令包 (0x10)，直接忽略，不註冊感測器
         if packet_type == 0x10:
             return
@@ -104,7 +107,7 @@ class MqttPublisher:
 
             base_id = f"jk_bms_{device_id}_{key_en}"
             payload = {
-                "name": name_cn, 
+                "name": name_cn,
                 "unique_id": base_id,
                 "object_id": base_id,
                 "state_topic": state_topic,
@@ -114,7 +117,7 @@ class MqttPublisher:
                 "payload_not_available": "offline",
                 "value_template": f"{{{{ value_json['{name_cn}'] }}}}"
             }
-            
+
             # 定義 binary_sensor 的 ON/OFF 映射
             if ha_type == "binary_sensor":
                 payload["payload_on"] = "1"
@@ -128,7 +131,7 @@ class MqttPublisher:
 
     def publish_payload(self, device_id: int, packet_type: int, payload_dict: Dict[str, Any]):
         """發布數據至 MQTT"""
-        
+
         # ⛔ 隱藏邏輯：如果是指令包 (0x10)，直接忽略，不發布數據
         if packet_type == 0x10:
             return
@@ -141,7 +144,7 @@ class MqttPublisher:
 
         kind = "realtime" if packet_type == 0x02 else "settings"
         state_topic = f"{self.topic_prefix}/{device_id}/{kind}"
-        
+
         self._safe_publish(state_topic, json.dumps(payload_dict), retain=False)
 
         if packet_type in BMS_MAP:

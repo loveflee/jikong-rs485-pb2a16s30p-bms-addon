@@ -139,7 +139,12 @@ BMS_MAP = {
 #       185: ("预充状态", "Bit", TYPE_U8, conv_none, HA_SENSOR, None, "precharge_status"),
 #       186: ("用户层报警", "Hex", TYPE_U16, conv_hex , HA_BINARY, "mdi:switch", "user_alarms"),
         188: ("运行时间", "S", TYPE_U32, conv_none, HA_SENSOR, "mdi:counter", "runtime_seconds"),
-        192: ("充电状态", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch", "charge_status_hex"),
+        # --- 🟢 修正：將充放電狀態拆分為兩個獨立實體 ---
+        # 原廠定義 192: Charge (UINT8)
+        192: ("充电状态", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-charging", "charge_status"),        
+        # 原廠定義 193 (Hex 0xC1): Discharge (UINT8)
+        193: ("放电状态", None, TYPE_U8, conv_none, HA_BINARY, "mdi:battery-arrow-down-outline", "discharge_status"),
+#        192: ("充电状态", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch", "charge_status_hex"),
 #       193: ("放电状态", "Hex", TYPE_U16, conv_hex, HA_SENSOR, None, "discharge_status_hex"),
 #       194: ("用户层报警2", "Hex", TYPE_U16, conv_hex, HA_BINARY, "mdi:switch", "user_alarms_2"),
 

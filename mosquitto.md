@@ -13,6 +13,7 @@ nano hardening.conf
 ```
 max_queued_messages 1000
 queue_qos0_messages false
+memory_limit 256M
 ```
 
 restart ha add-on mosquitto

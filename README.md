@@ -88,3 +88,45 @@ state_class: measurement</br>
 {% endfor %}
 {{ ns.min_voltage }}
 ```
+
+nano config/configuration.yaml
+
+```
+template:
+  - sensor:
+      # 感測器A：數值型，進InfluxDB
+      - name: "JK BMS 0 Cell Min Voltage"
+        unique_id: jk_bms_0_cell_min_voltage
+        device_class: voltage
+        unit_of_measurement: "V"
+        state_class: measurement
+        availability: >
+          {{ states('sensor.jk_bms_0_cell_01_voltage') not in ['unknown', 'unavailable'] }}
+        state: >
+          {% set ns = namespace(min_voltage=999.0) %}
+          {% for i in range(1, 17) %}
+            {% set entity_id = "sensor.jk_bms_0_cell_" + "%02d" % i + "_voltage" %}
+            {% set v = states(entity_id) | float(0.0) %}
+            {% if v < ns.min_voltage and v > 0.1 %}
+              {% set ns.min_voltage = v %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.min_voltage }}
+
+      # 感測器B：文字型，看板顯示
+      - name: "JK BMS 0 Cell Min Info"
+        unique_id: jk_bms_0_cell_min_info
+        availability: >
+          {{ states('sensor.jk_bms_0_cell_01_voltage') not in ['unknown', 'unavailable'] }}
+        state: >
+          {% set ns = namespace(min_voltage=999.0, min_cell_number=0) %}
+          {% for i in range(1, 17) %}
+            {% set entity_id = "sensor.jk_bms_0_cell_" + "%02d" % i + "_voltage" %}
+            {% set v = states(entity_id) | float(0.0) %}
+            {% if v < ns.min_voltage and v > 0.1 %}
+              {% set ns.min_voltage = v %}
+              {% set ns.min_cell_number = i %}
+            {% endif %}
+          {% endfor %}
+          Cell {{ "%02d" % ns.min_cell_number }}: {{ ns.min_voltage }} V
+```

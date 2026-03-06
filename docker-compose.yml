@@ -1,0 +1,40 @@
+#version: '3.8'
+services:
+  jk_bms_app:
+    build: .
+    container_name: jk_bms
+    restart: unless-stopped
+    volumes:
+      # 映射假造的 options.json 供 run.sh 與 main.py 讀取
+#      - ./options.json:/data/options.json:ro
+      # 映射 /data 讓 run.sh 可以正常寫入 config.yaml
+      - ./config:/data
+#    devices:
+#       將實體機的 RS485 mapping 進容器
+#      - "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0:/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
+    environment:
+      - TZ=Asia/Taipei
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    # 若 MQTT broker 位於實體機或其他網段，建議使用 host 網路模式或正確配置 alias
+    # network_mode: "host" 
+    logging:
+          driver: "json-file"
+          options:
+            max-size: "10m"
+            max-file: "3"
+  telegraf:
+    image: telegraf:1.37.2
+    container_name: telegraf_jk_bms
+    restart: unless-stopped
+    volumes:
+      - ./telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    environment:
+      - TZ=Asia/Taipei
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    logging:
+          driver: "json-file"
+          options:
+            max-size: "10m"
+            max-file: "3"

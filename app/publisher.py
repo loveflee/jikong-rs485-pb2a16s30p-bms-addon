@@ -111,8 +111,8 @@ class MqttPublisher:
             name_cn = entry[0]
             unit = entry[1]
             ha_type = entry[4] if len(entry) > 4 else "sensor"
-			# [修正 1] 抓取第 5 個位置的圖示設定
-			icon = entry[5] if len(entry) > 5 else None
+            # [修正 1] 抓取第 5 個位置的圖示設定
+            icon = entry[5] if len(entry) > 5 else None
             key_en = entry[6] if len(entry) > 6 else f"reg_{packet_type}_{offset}"
 
             base_id = f"jk_bms_{device_id}_{key_en}"

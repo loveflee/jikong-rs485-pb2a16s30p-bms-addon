@@ -111,6 +111,8 @@ class MqttPublisher:
             name_cn = entry[0]
             unit = entry[1]
             ha_type = entry[4] if len(entry) > 4 else "sensor"
+			# [修正 1] 抓取第 5 個位置的圖示設定
+			icon = entry[5] if len(entry) > 5 else None
             key_en = entry[6] if len(entry) > 6 else f"reg_{packet_type}_{offset}"
 
             base_id = f"jk_bms_{device_id}_{key_en}"
@@ -133,7 +135,11 @@ class MqttPublisher:
 		"value_template": f"{{{{ value_json['{key_en}'] }}}}"
             }
 
-            # 定義 binary_sensor 的 ON/OFF 映射
+            # 🟢 [修正 2] 如果有定義圖示，就寫進 HA 的設定檔裡
+            if icon:
+                payload["icon"] = icon
+
+			# 定義 binary_sensor 的 ON/OFF 映射
             if ha_type == "binary_sensor":
                 payload["payload_on"] = "1"
                 payload["payload_off"] = "0"

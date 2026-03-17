@@ -1,17 +1,29 @@
+# =============================================================================
+# publisher.py - V2.1.7 生產硬化版 (Production Hardened)
+# 模組名稱：JK-BMS MQTT 數據發布模組
+# 升級亮點：
+#   - [Fix] 補齊 typing 定義，防止 Python 運行時 NameError。
+#   - [Fix] 嚴格檢查 MQTT rc 狀態碼，確保數據鏈路真實可用。
+#   - [Opt] 導入斷線監控 (on_disconnect)，強化現場網路除錯能力。
+#   - [Opt] 增強 JSON 序列化安全性，攔截不合法數據 (NaN/Inf)。
+#   - [Security] 維持物理節流與去抖動邏輯，阻斷 MQTT 風暴。
+# =============================================================================
+
 import json
 import time
 import yaml
 import os
 import logging
 import paho.mqtt.client as mqtt
+from typing import Dict, Any, Optional, Tuple, Set  # 🚀 [V2.1.7 Fix] 補齊類型定義
+
 from bms_registers import BMS_MAP
 
 logger = logging.getLogger("jk_bms_publisher")
 
 class MqttPublisher:
     """
-    V2.1.5 硬化版：導入 HAManager V2.9.4 的物理防護邏輯
-    核心亮點：徹底阻斷 MQTT Storm、雙重狀態矩陣、物理去抖。
+    V2.1.7 硬化版：具備物理防護、連線狀態回饋與數據合法性檢查。
     """
     def __init__(self, config_path: str = "/data/config.yaml"):
         if not os.path.exists(config_path):
@@ -28,15 +40,15 @@ class MqttPublisher:
         self.client_id = self.mqtt_cfg.get("client_id", "jk_bms_monitor")
         self.status_topic = f"{self.topic_prefix}/status"
         
-        # --- [🚀 V2.9.4 物理防護導入] ---
-        self._last_state_publish = {}      # 格式: {topic: timestamp}
+        # --- 物理防護緩衝區 ---
+        self._last_state_publish: Dict[str, float] = {}      
         self._state_min_interval = 0.2     # 狀態發布最小間隔 200ms
-        self._discovery_sent = set()       # 防禦 Discovery Storm 旗標
-        self._availability_cache = {}      # 格式: {device_id: bool}
-        self._availability_min_interval = 1.0  # 狀態切換冷卻 1.0s
-        self._last_availability_publish = {}
+        self._discovery_sent: Set[Tuple] = set()       
+        self._availability_cache: Dict[int, str] = {}      
+        self._availability_min_interval = 1.0  
+        self._last_availability_publish: Dict[int, float] = {}
 
-        # --- MQTT 初始化 ---
+        # --- MQTT 核心初始化 ---
         broker = self.mqtt_cfg.get("host", "core-mosquitto")
         port = int(self.mqtt_cfg.get("port", 1883))
         self.client = mqtt.Client(client_id=self.client_id, protocol=mqtt.MQTTv311, clean_session=True)
@@ -44,17 +56,19 @@ class MqttPublisher:
         if self.mqtt_cfg.get("username") and self.mqtt_cfg.get("password"):
             self.client.username_pw_set(self.mqtt_cfg["username"], self.mqtt_cfg["password"])
         
+        # 設定遺言與回調
         self.client.will_set(self.status_topic, payload="offline", qos=1, retain=True)
         self.client.on_connect = self._on_connect
-        
+        self.client.on_disconnect = self._on_disconnect  # 🚀 [V2.1.7 Opt] 監控斷線
+
         try:
             self.client.connect_async(broker, port, keepalive=60)
             self.client.loop_start()
-            logger.info(f"📡 MQTT 硬化版啟動: {broker}:{port}")
+            logger.info(f"📡 MQTT V2.1.7 硬化版啟動: {broker}:{port}")
         except Exception as e:
             logger.error(f"❌ MQTT 啟動失敗: {e}")
 
-        self.settings_last_publish = {}
+        self.settings_last_publish: Dict[int, float] = {}
 
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
@@ -63,25 +77,39 @@ class MqttPublisher:
         else:
             logger.warning(f"⚠️ MQTT 連線錯誤 rc={rc}")
 
+    def _on_disconnect(self, client, userdata, rc):
+        """🚀 [V2.1.7 新增] 物理斷線監控回調"""
+        if rc != 0:
+            logger.warning(f"⚠️ MQTT 非預期斷線 (rc={rc})，系統將自動重連")
+
     def _safe_publish(self, topic: str, payload, retain: bool = False, qos: int = 0):
-        """[🚀 V2.9.4 導入] 安全發布：攔截所有序列化與網路例外"""
+        """🚀 [V2.1.7 Fix] 檢查 rc 回傳值與 JSON 合法性"""
         try:
             if isinstance(payload, (dict, list)):
-                data = json.dumps(payload)
+                # [V2.1.7 Opt] 攔截 NaN/Inf 以防止非法 JSON 污染看板
+                data = json.dumps(payload, allow_nan=False)
             else:
                 data = payload
-            self.client.publish(topic, payload=data, retain=retain, qos=qos)
+            
+            info = self.client.publish(topic, payload=data, retain=retain, qos=qos)
+            
+            # 嚴格檢查連線狀態碼
+            if info.rc != mqtt.MQTT_ERR_SUCCESS:
+                logger.debug(f"MQTT publish 失敗 rc={info.rc} topic={topic}")
+                return False
+                
             return True
+        except (ValueError, TypeError) as e:
+            logger.error(f"JSON 序列化異常 (可能有 NaN 數據): {e} | Topic: {topic}")
+            return False
         except Exception as e:
-            logger.debug(f"發布失敗 ({topic}): {e}")
+            logger.debug(f"MQTT 發布未知錯誤 ({topic}): {e}")
             return False
 
     def publish_device_status(self, device_id: int, status: str):
-        """[🚀 V2.9.4 導入] 物理去抖 (Debounce) 的設備可用性發布"""
         now = time.monotonic()
         last_pub = self._last_availability_publish.get(device_id, 0)
         
-        # 1.0s 內禁止頻繁切換狀態 (防止網路抖動)
         if status == self._availability_cache.get(device_id) and (now - last_pub < self._availability_min_interval):
             return
 
@@ -89,15 +117,13 @@ class MqttPublisher:
         if self._safe_publish(topic, payload=status, retain=True, qos=1):
             self._availability_cache[device_id] = status
             self._last_availability_publish[device_id] = now
-            logger.info(f"🔄 設備狀態同步: BMS {device_id} -> {status}")
+            logger.info(f"🔄 狀態同步: BMS {device_id} -> {status}")
 
     def publish_discovery_for_packet_type(self, device_id: int, packet_type: int, data_map: Dict[int, Any]):
-        """[🚀 V2.9.4 導入] 防禦 Discovery Storm 旗標"""
-        # 排除指令包
         if packet_type == 0x10: return
         
-        # 防重發機制
-        key = (device_id, packet_type)
+        # 🚀 [V2.1.7 Opt] 強化 Discovery 唯一性鍵值
+        key = (device_id, packet_type, tuple(data_map.keys()))
         if key in self._discovery_sent: return
         self._discovery_sent.add(key)
 
@@ -138,14 +164,12 @@ class MqttPublisher:
             self._safe_publish(disc_topic, payload, retain=True, qos=1)
 
     def publish_payload(self, device_id: int, packet_type: int, payload_dict: Dict[str, Any]):
-        """[🚀 V2.9.4 導入] 物理節流 (200ms Throttle) 狀態發布"""
         if packet_type == 0x10: return
         
         now = time.monotonic()
         kind = "realtime" if packet_type == 0x02 else "settings"
         state_topic = f"{self.topic_prefix}/{device_id}/{kind}"
 
-        # 節流判定：如果發得太快，直接攔截，保護 MQTT Broker
         last_pub = self._last_state_publish.get(state_topic, 0)
         if now - last_pub < self._state_min_interval:
             return
@@ -158,7 +182,6 @@ class MqttPublisher:
 
         if self._safe_publish(state_topic, payload_dict, retain=False):
             self._last_state_publish[state_topic] = now
-            # 自動觸發 Discovery (如果尚未發布)
             if packet_type in BMS_MAP:
                 self.publish_discovery_for_packet_type(device_id, packet_type, BMS_MAP[packet_type])
 

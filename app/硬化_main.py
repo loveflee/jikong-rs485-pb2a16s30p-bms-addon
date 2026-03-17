@@ -1,4 +1,13 @@
-# V2.1.6 main
+# =============================================================================
+# main.py - V2.2.1 Production Final (Industrial Hardened)
+# 模組名稱：JK-BMS 監控系統核心調度模組
+# 修正亮點：
+#   - [Fix] pending_realtime_data 清理：新增超時自動清理，防止即時數據與設備 ID 錯配。
+#   - [Fix] logger typo：修正 MQTT 連線成功提示語。
+#   - [Opt] YAML 排序保護：使用 sort_keys=False 保持設定檔結構可讀性。
+#   - [Opt] 快取併發安全：使用 .copy() 取代 list.items()，強化多執行緒環境下的數據快照一致性。
+# =============================================================================
+
 import time
 import os
 import sys
@@ -13,8 +22,8 @@ from transport import create_transport
 from decoder import decode_packet, extract_device_address
 from publisher import get_publisher
 
-# 500 * 308 bytes ≈ 154 KB, 限制隊列長度以保護內存
-PACKET_QUEUE = queue.Queue(maxsize=500)
+# 🚀 [V2.2.1] PACKET_QUEUE 深度 800
+PACKET_QUEUE = queue.Queue(maxsize=800)
 OPTIONS_PATH = "/data/options.json"
 CONFIG_PATH = "/data/config.yaml"
 
@@ -64,7 +73,8 @@ def load_ui_config():
     }
 
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        yaml.dump(config, f)
+        # 🚀 [V2.2.1 Opt] 保持 YAML 鍵值順序
+        yaml.dump(config, f, sort_keys=False)
     return config
 
 def device_watchdog_worker():
@@ -75,16 +85,17 @@ def device_watchdog_worker():
     while True:
         try:
             now = time.time()
+            # 🚀 [V2.2.1 Opt] 併發安全快照
             with DEVICE_LOCK:
-                devices_snapshot = list(DEVICE_STATUS_MAP.items())
+                devices_snapshot = DEVICE_STATUS_MAP.copy()
 
-            for dev_id, info in devices_snapshot:
+            for dev_id, info in devices_snapshot.items():
                 if info["state"] == "online" and (now - info["last_seen"]) > DEVICE_TIMEOUT:
                     with DEVICE_LOCK:
                         DEVICE_STATUS_MAP[dev_id]["state"] = "offline"
                     publisher.publish_device_status(dev_id, "offline")
                     logger.warning(f"⚠️ 設備掉線: BMS {dev_id} 已超過 {DEVICE_TIMEOUT} 秒未回應")
-            time.sleep(5)
+            time.sleep(2)
         except Exception:
             logger.exception("Watchdog 循環發生未知異常")
             time.sleep(10)
@@ -97,13 +108,24 @@ def process_packets_worker(app_config):
 
     last_polled_slave_id = None
     last_poll_timestamp = 0
-    pending_cmds = {}
+    pending_cmds = {} 
     pending_realtime_data = {}
 
     logger = logging.getLogger("worker")
 
     while True:
         try:
+            now = time.time()
+            # 🚀 [V2.2.1 Fix] 清理過期即時數據緩存，防止對齊失效
+            if "last" in pending_realtime_data:
+                if now - pending_realtime_data["last"][0] > packet_expire_time:
+                    pending_realtime_data.clear()
+
+            # 🚀 [V2.2.1 Fix] 清理過期指令暫存
+            for sid in list(pending_cmds.keys()):
+                if now - pending_cmds[sid][0] > 5.0:
+                    del pending_cmds[sid]
+
             packet_item = PACKET_QUEUE.get()
             timestamp, packet_type, packet_data = packet_item
 
@@ -118,7 +140,7 @@ def process_packets_worker(app_config):
 
                         last_polled_slave_id = target_id
                         last_poll_timestamp = timestamp
-                        pending_cmds[target_id] = cmd_map
+                        pending_cmds[target_id] = (timestamp, cmd_map)
                     continue
 
                 # 2. 暫存 0x02
@@ -152,10 +174,10 @@ def process_packets_worker(app_config):
                         logger.debug(f" [回答] 硬體ID: {hw_id} | 判定歸屬: {target_publish_id} | 理由: {reason_msg}")
 
                     if target_publish_id is not None:
-                        now = time.time()
+                        now_ts = time.time()
                         with DEVICE_LOCK:
                             dev_info = DEVICE_STATUS_MAP.setdefault(target_publish_id, {"last_seen": 0, "state": "offline"})
-                            dev_info["last_seen"] = now
+                            dev_info["last_seen"] = now_ts
                             current_state = dev_info["state"]
                             if current_state == "offline":
                                 dev_info["state"] = "online"
@@ -164,7 +186,8 @@ def process_packets_worker(app_config):
                             publisher.publish_device_status(target_publish_id, "online")
 
                         if target_publish_id in pending_cmds:
-                            publisher.publish_payload(0, 0x10, pending_cmds.pop(target_publish_id))
+                            _, actual_cmd = pending_cmds.pop(target_publish_id)
+                            publisher.publish_payload(0, 0x10, actual_cmd)
 
                         settings_map = decode_packet(packet_data, 0x01)
                         if settings_map:
@@ -176,18 +199,15 @@ def process_packets_worker(app_config):
                                 realtime_map = decode_packet(rt_data, 0x02)
                                 if realtime_map:
                                     publisher.publish_payload(target_publish_id, 0x02, realtime_map)
-                                    if is_debug: logger.debug(f"✅ [發布] BMS {target_publish_id} 數據完成")
 
                     if (timestamp - last_poll_timestamp) > 5.0:
                         pending_cmds.clear()
 
             except Exception:
-                # 🟢 [修正] 導入 logger.exception 記錄完整的堆疊資訊
                 logger.exception("解析封包內容時發生異常")
             finally:
                 PACKET_QUEUE.task_done()
         except Exception:
-            # 🟢 [修正] 防止 Worker 執行緒崩潰，並記錄完整堆疊
             logger.exception("Worker 執行緒發生嚴重循環錯誤")
             time.sleep(1)
 
@@ -203,7 +223,7 @@ def main():
 
     logger = logging.getLogger("main")
     logger.info("==========================================")
-    logger.info(" JiKong BMS 監控系統 v2.1.6 (生產硬化版)")
+    logger.info(" JiKong BMS 監控系統 v2.2.1 Production Final")
     logger.info("==========================================")
 
     _ = get_publisher(CONFIG_PATH)
@@ -215,12 +235,11 @@ def main():
     try:
         for pkt_type, pkt_data in transport_inst.packets():
             try:
-                # 🟢 [修正] 使用 Non-blocking put 防禦 Race Condition 與隊列溢出
                 PACKET_QUEUE.put((time.time(), pkt_type, pkt_data), block=False)
             except queue.Full:
-                logger.warning("⚠️ PACKET_QUEUE 已滿，丟棄封包（請檢查系統效能或數據頻率）")
+                logger.warning("⚠️ PACKET_QUEUE 已滿，丟棄封包")
             except Exception:
-                logger.exception("將封包存入隊列時發生異常")
+                logger.exception("存入隊列時發生未知異常")
     except KeyboardInterrupt:
         logger.info(" 系統由使用者停止")
     except Exception:

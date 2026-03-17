@@ -1,3 +1,4 @@
+# v1.1 過濾位元翻轉
 import struct
 import logging
 from typing import Dict, Any, Optional

@@ -1,4 +1,4 @@
-# publisher.py
+# publisher.py mqtt 發布 
 import json
 import time
 import yaml

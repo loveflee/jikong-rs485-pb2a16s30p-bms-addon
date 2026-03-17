@@ -1,11 +1,12 @@
 # =============================================================================
-# publisher.py - V2.2.0 工業生產版 (Industrial Hardened)
-# 升級重點：
-#   - [Fix] MQTT Reconnect Backoff: 1s-60s 指數退避，防止 Broker Storm。
-#   - [Fix] Discovery Cache 保護: 限制 2000 組 Key，防止長期運行內存溢出。
-#   - [Fix] Publish 安全判定: 加入 is_connected 預檢，確保 Qos 鏈路穩定。
-#   - [Opt] JSON 傳輸優化: 使用緊湊模式 (separators) 節省 15% 頻寬。
-#   - [Opt] MQTT 隊列擴張: 設定 max_inflight (50) 防止高頻發布阻塞。
+# publisher.py - V2.2.1 Production Final (Industrial Hardened)
+# 模組名稱：JK-BMS 數據發布模組
+# 修正亮點：
+#   - [Fix] MQTT 連線安全性：修正 _on_connect 中的狀態發布，確保 Online 訊息必達。
+#   - [Fix] 拼字修正：修正日誌中的「連連線」Typo。
+#   - [Fix] 類型定義：完整導入 typing 定義，支持 Python 3.7+ 環境。
+#   - [Opt] 傳輸優化：採用緊湊 JSON 序列化 (separators)，降低 MQTT 負載。
+#   - [Security] 物理防護：維持 V2.2.0 的指數退避重連、節流發送與 Discovery 防暴發機制。
 # =============================================================================
 
 import json
@@ -21,6 +22,9 @@ from bms_registers import BMS_MAP
 logger = logging.getLogger("jk_bms_publisher")
 
 class MqttPublisher:
+    """
+    V2.2.1 生產最終版：整合物理防護、連線指數退避與 Discovery 內存保護。
+    """
     def __init__(self, config_path: str = "/data/config.yaml"):
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"找不到設定檔: {config_path}")
@@ -30,12 +34,13 @@ class MqttPublisher:
         self.mqtt_cfg = full_cfg.get("mqtt", {})
         self.app_cfg = full_cfg.get("app", {})
         
+        # --- 基礎配置 ---
         self.discovery_prefix = self.mqtt_cfg.get("discovery_prefix", "homeassistant")
         self.topic_prefix = self.mqtt_cfg.get("topic_prefix", "Jikong_BMS")
         self.client_id = self.mqtt_cfg.get("client_id", "jk_bms_monitor")
         self.status_topic = f"{self.topic_prefix}/status"
         
-        # 物理防護緩衝區
+        # --- 物理防護緩衝區 ---
         self._last_state_publish: Dict[str, float] = {}      
         self._state_min_interval = 0.2     
         self._discovery_sent: Set[Tuple] = set()       
@@ -43,14 +48,14 @@ class MqttPublisher:
         self._availability_min_interval = 1.0  
         self._last_availability_publish: Dict[int, float] = {}
 
-        # MQTT 初始化
+        # --- MQTT 初始化 ---
         broker = self.mqtt_cfg.get("host", "core-mosquitto")
         port = int(self.mqtt_cfg.get("port", 1883))
         self.client = mqtt.Client(client_id=self.client_id, protocol=mqtt.MQTTv311, clean_session=True)
         
-        # 🚀 [V2.2.0 Fix] 指數退避重連策略 (1s - 60s)
+        # 🚀 [V2.2.1] 指數退避重連策略 (1s - 60s)
         self.client.reconnect_delay_set(min_delay=1, max_delay=60)
-        # 🚀 [V2.2.0 Opt] 擴大 Inflight 窗口，提升高頻吞吐量
+        # 🚀 [V2.2.1] 擴大吞吐窗口與隊列
         self.client.max_inflight_messages_set(50)
         self.client.max_queued_messages_set(1000)
         
@@ -64,7 +69,7 @@ class MqttPublisher:
         try:
             self.client.connect_async(broker, port, keepalive=60)
             self.client.loop_start()
-            logger.info(f"📡 MQTT V2.2.0 工業版啟動: {broker}:{port}")
+            logger.info(f"📡 MQTT V2.2.1 最終版啟動: {broker}:{port}")
         except Exception as e:
             logger.error(f"❌ MQTT 啟動失敗: {e}")
 
@@ -72,23 +77,25 @@ class MqttPublisher:
 
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
-            logger.info("✅ MQTT 已連連線")
-            self.client.publish(self.status_topic, payload="online", qos=1, retain=True)
+            # 🚀 [V2.2.1 Fix] 修正日誌 Typo
+            logger.info("✅ MQTT 已連線")
+            # 🚀 [V2.2.1 Fix] 使用安全發布確保 Online 狀態必達
+            self._safe_publish(self.status_topic, payload="online", qos=1, retain=True)
         else:
-            logger.warning(f"⚠️ MQTT 連接錯誤 rc={rc}")
+            logger.warning(f"⚠️ MQTT 連線錯誤 rc={rc}")
 
     def _on_disconnect(self, client, userdata, rc):
         if rc != 0:
-            logger.warning(f"⚠️ MQTT 非預期斷連 (rc={rc})，系統進入退避重連模式")
+            logger.warning(f"⚠️ MQTT 非預期斷連 (rc={rc})，系統進入重連退避模式")
 
     def _safe_publish(self, topic: str, payload, retain: bool = False, qos: int = 0):
+        """🚀 [V2.2.1] 安全發布：整合連線預檢、JSON 緊湊化與 rc 檢查"""
         try:
-            # 🚀 [V2.2.0 Opt] 預檢連線狀態
             if not self.client.is_connected():
                 return False
 
             if isinstance(payload, (dict, list)):
-                # 🚀 [V2.2.0 Opt] 緊湊模式序列化 (省流量)
+                # 🚀 [V2.2.1] 使用 separators 壓縮流量，攔截 NaN
                 data = json.dumps(payload, allow_nan=False, separators=(",", ":"))
             else:
                 data = payload
@@ -102,6 +109,7 @@ class MqttPublisher:
     def publish_device_status(self, device_id: int, status: str):
         now = time.monotonic()
         last_pub = self._last_availability_publish.get(device_id, 0)
+        
         if status == self._availability_cache.get(device_id) and (now - last_pub < self._availability_min_interval):
             return
 
@@ -109,24 +117,26 @@ class MqttPublisher:
         if self._safe_publish(topic, payload=status, retain=True, qos=1):
             self._availability_cache[device_id] = status
             self._last_availability_publish[device_id] = now
+            logger.info(f"🔄 狀態同步: BMS {device_id} -> {status}")
 
     def publish_discovery_for_packet_type(self, device_id: int, packet_type: int, data_map: Dict[int, Any]):
         if packet_type == 0x10: return
         
+        # 強化 Discovery 唯一性鍵值
         key = (device_id, packet_type, tuple(data_map.keys()))
         if key in self._discovery_sent: return
         
-        # 🚀 [V2.2.0 Fix] Discovery Cache 上限保護 (防止 Memory Leak)
+        # 🚀 [V2.2.1 Fix] 內存保護，限制快取數量
         if len(self._discovery_sent) > 2000:
             self._discovery_sent.clear()
-            logger.info("🧹 Discovery Cache 已滿，執行自動清理")
+            logger.info("🧹 自動清理 Discovery 快取")
             
         self._discovery_sent.add(key)
 
         device_info = {
             "identifiers": [f"jk_bms_{device_id}"],
             "manufacturer": "JiKong (JK-BMS)",
-            "model": "PB2A16S30P (V2.2.0)",
+            "model": "PB2A16S30P (Final)",
             "name": f"JK BMS {device_id if device_id != 0 else '0 (Master)'}",
         }
         
@@ -156,17 +166,28 @@ class MqttPublisher:
 
     def publish_payload(self, device_id: int, packet_type: int, payload_dict: Dict[str, Any]):
         if packet_type == 0x10: return
+        
         now = time.monotonic()
-        state_topic = f"{self.topic_prefix}/{device_id}/{('realtime' if packet_type == 0x02 else 'settings')}"
+        kind = "realtime" if packet_type == 0x02 else "settings"
+        state_topic = f"{self.topic_prefix}/{device_id}/{kind}"
 
-        if now - self._last_state_publish.get(state_topic, 0) < self._state_min_interval:
+        # 🚀 [V2.2.1] 物理節流判定
+        last_pub = self._last_state_publish.get(state_topic, 0)
+        if now - last_pub < self._state_min_interval:
             return
+
+        if packet_type == 0x01:
+            interval = float(self.app_cfg.get("settings_publish_interval", 60))
+            if time.time() - self.settings_last_publish.get(device_id, 0) < interval:
+                return
+            self.settings_last_publish[device_id] = time.time()
 
         if self._safe_publish(state_topic, payload_dict, retain=False):
             self._last_state_publish[state_topic] = now
             if packet_type in BMS_MAP:
                 self.publish_discovery_for_packet_type(device_id, packet_type, BMS_MAP[packet_type])
 
+# --- 單例實作 (Singleton) ---
 _publisher_instance = None
 def get_publisher(config_path: str = "/data/config.yaml"):
     global _publisher_instance

@@ -1,3 +1,4 @@
+# publisher.py
 import json
 import time
 import yaml
@@ -131,8 +132,8 @@ class MqttPublisher:
                 "payload_available": "online",
                 "payload_not_available": "offline",
 #                "value_template": f"{{{{ value_json['{name_cn}'] }}}}"
-                # [修改] 改去讀 MQTT 裡的英文 Key
-                "value_template": f"{{{{ value_json['{key_en}'] }}}}"
+		# [修改] 改去讀 MQTT 裡的英文 Key
+		"value_template": f"{{{{ value_json['{key_en}'] }}}}"
             }
 
             # 🟢 [修正 2] 如果有定義圖示，就寫進 HA 的設定檔裡

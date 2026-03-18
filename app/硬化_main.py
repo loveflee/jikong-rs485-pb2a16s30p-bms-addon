@@ -33,49 +33,55 @@ DEVICE_TIMEOUT = 60.0
 DEVICE_LOCK = threading.Lock() 
 
 def load_ui_config():
-    if not os.path.exists(OPTIONS_PATH):
-        logging.error("❌ 找不到 HA options.json")
-        sys.exit(1)
+    """雙棲配置加載：優先讀取 HA options.json，若無則讀取 config.yaml"""
+    # 模式 1：HA Add-on 環境
+    if os.path.exists(OPTIONS_PATH):
+        with open(OPTIONS_PATH, 'r', encoding='utf-8') as f:
+            options = json.load(f)
 
-    with open(OPTIONS_PATH, 'r', encoding='utf-8') as f:
-        options = json.load(f)
-
-    ui_mode = options.get("connection_mode", "RS485 USB Dongle")
-
-    config = {
-        "app": {
-            "use_modbus_gateway": ui_mode == "Modbus Gateway TCP",
-            "use_rs485_usb": ui_mode == "RS485 USB Dongle",
-            "debug_raw_log": options.get("debug_raw_log", False),
-            "packet_expire_time": options.get("packet_expire_time", 2.0),
-            "settings_publish_interval": options.get("settings_publish_interval", 60)
-        },
-        "tcp": {
-            "host": options.get("modbus_host"),
-            "port": options.get("modbus_port", 502),
-            "timeout": options.get("modbus_timeout", 10),
-            "buffer_size": options.get("modbus_buffer_size", 4096)
-        },
-        "serial": {
-            "device": options.get("serial_device"),
-            "baudrate": options.get("serial_baudrate", 115200),
-            "timeout": 1.0
-        },
-        "mqtt": {
-            "host": options.get("mqtt_host"),
-            "port": options.get("mqtt_port", 1883),
-            "username": options.get("mqtt_username"),
-            "password": options.get("mqtt_password"),
-            "discovery_prefix": options.get("mqtt_discovery_prefix", "homeassistant"),
-            "topic_prefix": options.get("mqtt_topic_prefix", "Jikong_BMS"),
-            "client_id": options.get("mqtt_client_id", "jk_bms_monitor")
+        ui_mode = options.get("connection_mode", "RS485 USB Dongle")
+        config = {
+            "app": {
+                "use_modbus_gateway": ui_mode == "Modbus Gateway TCP",
+                "use_rs485_usb": ui_mode == "RS485 USB Dongle",
+                "debug_raw_log": options.get("debug_raw_log", False),
+                "packet_expire_time": options.get("packet_expire_time", 2.0),
+                "settings_publish_interval": options.get("settings_publish_interval", 60)
+            },
+            "tcp": {
+                "host": options.get("modbus_host"),
+                "port": options.get("modbus_port", 502),
+                "timeout": options.get("modbus_timeout", 10),
+                "buffer_size": options.get("modbus_buffer_size", 4096)
+            },
+            "serial": {
+                "device": options.get("serial_device"),
+                "baudrate": options.get("serial_baudrate", 115200),
+                "timeout": 1.0
+            },
+            "mqtt": {
+                "host": options.get("mqtt_host"),
+                "port": options.get("mqtt_port", 1883),
+                "username": options.get("mqtt_username"),
+                "password": options.get("mqtt_password"),
+                "discovery_prefix": options.get("mqtt_discovery_prefix", "homeassistant"),
+                "topic_prefix": options.get("mqtt_topic_prefix", "Jikong_BMS"),
+                "client_id": options.get("mqtt_client_id", "jk_bms_monitor")
+            }
         }
-    }
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            yaml.dump(config, f, sort_keys=False)
+        return config
 
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        # 🚀 [V2.2.1 Opt] 保持 YAML 鍵值順序
-        yaml.dump(config, f, sort_keys=False)
-    return config
+    # 模式 2：獨立 Docker 模式 (讀取 config.yaml)
+    elif os.path.exists(CONFIG_PATH):
+        logging.info("ℹ️ 偵測為獨立 Docker 模式，讀取現有 config.yaml")
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+    # 模式 3：全空，報錯退出
+    else:
+        logging.error("❌ 找不到 HA options.json，也沒有 config.yaml！請確認 /data 掛載與設定檔。")
+        sys.exit(1)
 
 def device_watchdog_worker():
     """獨立看門狗：監控設備在線狀態"""
@@ -218,7 +224,8 @@ def main():
     logging.basicConfig(
         level=logging.DEBUG if bool(app_cfg.get("debug_raw_log", False)) else logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s',
-        datefmt='%H:%M:%S'
+        datefmt='%H:%M:%S',
+        force=True  # [V2.2.1 Fix] 強制覆蓋幽靈預設值，解鎖日誌輸出
     )
 
     logger = logging.getLogger("main")

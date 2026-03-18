@@ -1,0 +1,30 @@
+# docker-compose.yaml - JK-BMS Gateway V2.2.1
+#version: '3.8'
+services:
+  jk-bms-gateway:
+    build: .
+    container_name: jkbms
+    restart: unless-stopped
+    # 掛載目錄：將本機的 ./data 映射到容器內，用以存放 options.json 或 config.yaml
+    volumes:
+      - ./data:/data
+    # 硬體設備映射 (RS485 USB Dongle)
+    # 請根據實際情況修改 /dev/ttyUSB0，若使用純 TCP 模式可將此段註解
+    devices:
+    # 一定要有真實設備再開啟，開發階段可先註解  ls -l /dev/serial/by-id/  找設備 比較穩定 換孔也沒關西
+       - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0:/dev/ttyUSB0
+    # 確保容器擁有讀取 USB 設備的權限
+    privileged: true
+    environment:
+      - TZ=Asia/Taipei
+    # 資源限制：防止記憶體洩漏吃垮宿主機 (Docker Compose v3 兼容寫法)
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    # 日誌滾動策略：單檔最大 10M，保留 3 個，防止硬碟爆滿
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

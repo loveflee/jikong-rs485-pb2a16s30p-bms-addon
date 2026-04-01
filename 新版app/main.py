@@ -1,11 +1,12 @@
 # =============================================================================
-# main.py - V2.2.1 Production Final (Industrial Hardened)
+# main.py - V2.2.4 Production Final (Edge Node Hardened)
 # 模組名稱：JK-BMS 監控系統核心調度模組
 # 修正亮點：
-#   - [Fix] pending_realtime_data 清理：新增超時自動清理，防止即時數據與設備 ID 錯配。
-#   - [Fix] logger typo：修正 MQTT 連線成功提示語。
-#   - [Opt] YAML 排序保護：使用 sort_keys=False 保持設定檔結構可讀性。
-#   - [Opt] 快取併發安全：使用 .copy() 取代 list.items()，強化多執行緒環境下的數據快照一致性。
+#   - [Fix] 傳輸層斷線即時反灰：實作 _on_transport_down 回調，USB/TCP 斷線瞬間主動推送所有設備 offline (V2.2.4)
+#   - [Fix] 單調時鐘：全面替換 time.time()，免疫 NTP 校時 (承襲 V2.2.3)
+#   - [Fix] I/O 原子寫入：防禦跳電產生 0-byte 殭屍檔 (承襲 V2.2.3)
+#   - [Fix] Watchdog TOCTOU 防禦 (承襲 V2.2.2)
+#   - [Fix] task_done 孤兒防禦 (承襲 V2.2.2)
 # =============================================================================
 
 import time
@@ -16,24 +17,21 @@ import threading
 import logging
 import yaml
 import json
-import struct
 
 from transport import create_transport
 from decoder import decode_packet, extract_device_address
 from publisher import get_publisher
 
-# 🚀 [V2.2.1] PACKET_QUEUE 深度 800
 PACKET_QUEUE = queue.Queue(maxsize=800)
 OPTIONS_PATH = "/data/options.json"
 CONFIG_PATH = "/data/config.yaml"
 
-# 單機心跳監控全域變數
-DEVICE_STATUS_MAP = {}  
-DEVICE_TIMEOUT = 60.0   
-DEVICE_LOCK = threading.Lock() 
+DEVICE_STATUS_MAP = {}
+DEVICE_TIMEOUT = 60.0
+DEVICE_LOCK = threading.Lock()
+
 
 def load_ui_config():
-    """雙棲配置加載：優先讀取 HA options.json，若無則讀取 config.yaml"""
     # 模式 1：HA Add-on 環境
     if os.path.exists(OPTIONS_PATH):
         with open(OPTIONS_PATH, 'r', encoding='utf-8') as f:
@@ -69,36 +67,77 @@ def load_ui_config():
                 "client_id": options.get("mqtt_client_id", "jk_bms_monitor")
             }
         }
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+
+        # [V2.2.3] POSIX 原子寫入
+        tmp_path = CONFIG_PATH + ".tmp"
+        with open(tmp_path, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, sort_keys=False)
+        os.replace(tmp_path, CONFIG_PATH)
         return config
 
-    # 模式 2：獨立 Docker 模式 (讀取 config.yaml)
+    # 模式 2：獨立 Docker 模式
     elif os.path.exists(CONFIG_PATH):
         logging.info("ℹ️ 偵測為獨立 Docker 模式，讀取現有 config.yaml")
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
-    # 模式 3：全空，報錯退出
+            cfg = yaml.safe_load(f)
+
+        # [V2.2.3] 0-byte 殭屍檔防禦
+        if not cfg:
+            logging.error("❌ config.yaml 為空或損壞 (可能因跳電引起)，請檢查 /data 目錄")
+            sys.exit(1)
+        return cfg
+
     else:
         logging.error("❌ 找不到 HA options.json，也沒有 config.yaml！請確認 /data 掛載與設定檔。")
         sys.exit(1)
 
+
+def _on_transport_down():
+    """
+    🚀 [V2.2.4] 傳輸層斷線回調：USB/TCP 斷線瞬間主動將所有在線設備標記為 offline。
+    消除原本依賴 Watchdog 60 秒被動超時才反灰的盲區。
+    由 transport 層在 except 塊中直接觸發，執行於主執行緒。
+    """
+    logger = logging.getLogger("main")
+    logger.warning("🔌 傳輸層斷線，主動推送所有設備 offline")
+
+    # 步驟 1：加鎖批次更新狀態，收集需要發布的設備清單
+    devices_to_offline = []
+    with DEVICE_LOCK:
+        for dev_id, info in DEVICE_STATUS_MAP.items():
+            if info["state"] == "online":
+                info["state"] = "offline"
+                devices_to_offline.append(dev_id)
+
+    # 步驟 2：鎖外發布（避免 publish 期間持鎖）
+    if devices_to_offline:
+        publisher = get_publisher(CONFIG_PATH)
+        for dev_id in devices_to_offline:
+            publisher.publish_device_status(dev_id, "offline")
+        logger.warning(f"📴 已標記 {len(devices_to_offline)} 台設備離線: {devices_to_offline}")
+
+
 def device_watchdog_worker():
-    """獨立看門狗：監控設備在線狀態"""
     logger = logging.getLogger("watchdog")
     publisher = get_publisher(CONFIG_PATH)
 
     while True:
         try:
-            now = time.time()
-            # 🚀 [V2.2.1 Opt] 併發安全快照
+            # [V2.2.3] 單調時鐘，免疫 NTP 跳躍
+            now = time.monotonic()
             with DEVICE_LOCK:
                 devices_snapshot = DEVICE_STATUS_MAP.copy()
 
             for dev_id, info in devices_snapshot.items():
                 if info["state"] == "online" and (now - info["last_seen"]) > DEVICE_TIMEOUT:
                     with DEVICE_LOCK:
-                        DEVICE_STATUS_MAP[dev_id]["state"] = "offline"
+                        # [V2.2.2] TOCTOU 二次確認
+                        live_info = DEVICE_STATUS_MAP.get(dev_id)
+                        if live_info and live_info["state"] == "online" and \
+                                (now - live_info["last_seen"]) > DEVICE_TIMEOUT:
+                            live_info["state"] = "offline"
+                        else:
+                            continue
                     publisher.publish_device_status(dev_id, "offline")
                     logger.warning(f"⚠️ 設備掉線: BMS {dev_id} 已超過 {DEVICE_TIMEOUT} 秒未回應")
             time.sleep(2)
@@ -106,63 +145,61 @@ def device_watchdog_worker():
             logger.exception("Watchdog 循環發生未知異常")
             time.sleep(10)
 
+
 def process_packets_worker(app_config):
-    """資料處理核心：解析封包並分配設備歸屬"""
     publisher = get_publisher(CONFIG_PATH)
     packet_expire_time = app_config.get('packet_expire_time', 2.0)
     is_debug = bool(app_config.get("debug_raw_log", False))
 
     last_polled_slave_id = None
     last_poll_timestamp = 0
-    pending_cmds = {} 
+    pending_cmds = {}
     pending_realtime_data = {}
 
     logger = logging.getLogger("worker")
 
     while True:
         try:
-            now = time.time()
-            # 🚀 [V2.2.1 Fix] 清理過期即時數據緩存，防止對齊失效
+            # [V2.2.3] 單調時鐘
+            now = time.monotonic()
+
             if "last" in pending_realtime_data:
                 if now - pending_realtime_data["last"][0] > packet_expire_time:
                     pending_realtime_data.clear()
 
-            # 🚀 [V2.2.1 Fix] 清理過期指令暫存
             for sid in list(pending_cmds.keys()):
                 if now - pending_cmds[sid][0] > 5.0:
                     del pending_cmds[sid]
 
+            # [V2.2.2] task_done 孤兒防禦
             packet_item = PACKET_QUEUE.get()
-            timestamp, packet_type, packet_data = packet_item
-
             try:
-                # 1. 監聽到 Master 指令 (0x10)
+                timestamp, packet_type, packet_data = packet_item
+
                 if packet_type == 0x10:
                     cmd_map = decode_packet(packet_data, 0x10)
                     if cmd_map:
                         target_id = cmd_map.get("target_slave_id")
                         if is_debug:
                             logger.debug(f" [詢問] Master 正在呼叫從機 ID: {target_id}")
-
                         last_polled_slave_id = target_id
                         last_poll_timestamp = timestamp
                         pending_cmds[target_id] = (timestamp, cmd_map)
                     continue
 
-                # 2. 暫存 0x02
                 if packet_type == 0x02:
                     pending_realtime_data["last"] = (timestamp, packet_data)
                     continue
 
-                # 3. 處理回應 (0x01)
                 if packet_type == 0x01:
                     hw_id = extract_device_address(packet_data)
                     if hw_id is None:
-                        if is_debug: logger.debug("[忽略] 封包解析硬體 ID 失敗")
+                        if is_debug:
+                            logger.debug("[忽略] 封包解析硬體 ID 失敗")
                         continue
 
                     target_publish_id = None
-                    reason_msg = "" 
+                    reason_msg = ""
 
                     if hw_id == 0:
                         target_publish_id = 0
@@ -180,9 +217,12 @@ def process_packets_worker(app_config):
                         logger.debug(f" [回答] 硬體ID: {hw_id} | 判定歸屬: {target_publish_id} | 理由: {reason_msg}")
 
                     if target_publish_id is not None:
-                        now_ts = time.time()
+                        # [V2.2.3] 單調時鐘
+                        now_ts = time.monotonic()
                         with DEVICE_LOCK:
-                            dev_info = DEVICE_STATUS_MAP.setdefault(target_publish_id, {"last_seen": 0, "state": "offline"})
+                            dev_info = DEVICE_STATUS_MAP.setdefault(
+                                target_publish_id, {"last_seen": 0.0, "state": "offline"}
+                            )
                             dev_info["last_seen"] = now_ts
                             current_state = dev_info["state"]
                             if current_state == "offline":
@@ -213,9 +253,11 @@ def process_packets_worker(app_config):
                 logger.exception("解析封包內容時發生異常")
             finally:
                 PACKET_QUEUE.task_done()
+
         except Exception:
             logger.exception("Worker 執行緒發生嚴重循環錯誤")
             time.sleep(1)
+
 
 def main():
     full_cfg = load_ui_config()
@@ -225,12 +267,12 @@ def main():
         level=logging.DEBUG if bool(app_cfg.get("debug_raw_log", False)) else logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s',
         datefmt='%H:%M:%S',
-        force=True  # 🚀 [V2.2.1 Fix] 強制覆蓋幽靈預設值，解鎖日誌輸出
+        force=True
     )
 
     logger = logging.getLogger("main")
     logger.info("==========================================")
-    logger.info(" JiKong BMS 監控系統 v2.2.1 Production Final")
+    logger.info(" JiKong BMS 監控系統 v2.2.4 Production Final")
     logger.info("==========================================")
 
     _ = get_publisher(CONFIG_PATH)
@@ -239,10 +281,14 @@ def main():
     threading.Thread(target=device_watchdog_worker, daemon=True).start()
 
     transport_inst = create_transport()
+    # 🚀 [V2.2.4] 注入斷線回調：USB/TCP 斷線瞬間觸發，無需等待 Watchdog 60 秒
+    transport_inst.on_link_down = _on_transport_down
+
     try:
         for pkt_type, pkt_data in transport_inst.packets():
             try:
-                PACKET_QUEUE.put((time.time(), pkt_type, pkt_data), block=False)
+                # [V2.2.3] 入隊時間戳使用單調時鐘
+                PACKET_QUEUE.put((time.monotonic(), pkt_type, pkt_data), block=False)
             except queue.Full:
                 logger.warning("⚠️ PACKET_QUEUE 已滿，丟棄封包")
             except Exception:
@@ -251,6 +297,7 @@ def main():
         logger.info(" 系統由使用者停止")
     except Exception:
         logger.exception("💥 傳輸層發生致命故障")
+
 
 if __name__ == "__main__":
     main()

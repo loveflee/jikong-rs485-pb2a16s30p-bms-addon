@@ -2,7 +2,8 @@
 # main.py - V2.2.4 Production Final (Edge Node Hardened)
 # 模組名稱：JK-BMS 監控系統核心調度模組
 # 修正亮點：
-#   - [Fix] 傳輸層斷線即時反灰：實作 _on_transport_down 回調，USB/TCP 斷線瞬間主動推送所有設備 offline (V2.2.4)
+#   - [Fix] 日誌去噪：優化 _on_transport_down，僅在設備狀態真實改變時輸出警告，消除重複重試造成的日誌污染。
+#   - [Fix] 傳輸層斷線即時反灰：USB/TCP 斷線瞬間主動推送所有設備 offline (V2.2.4)
 #   - [Fix] 單調時鐘：全面替換 time.time()，免疫 NTP 校時 (承襲 V2.2.3)
 #   - [Fix] I/O 原子寫入：防禦跳電產生 0-byte 殭屍檔 (承襲 V2.2.3)
 #   - [Fix] Watchdog TOCTOU 防禦 (承襲 V2.2.2)
@@ -95,13 +96,10 @@ def load_ui_config():
 def _on_transport_down():
     """
     🚀 [V2.2.4] 傳輸層斷線回調：USB/TCP 斷線瞬間主動將所有在線設備標記為 offline。
-    消除原本依賴 Watchdog 60 秒被動超時才反灰的盲區。
-    由 transport 層在 except 塊中直接觸發，執行於主執行緒。
+    🚀 [Fix] 消除重複噪訊：僅在真實有設備在線時才觸發 MQTT 推送與警告日誌。
     """
     logger = logging.getLogger("main")
-    logger.warning("🔌 傳輸層斷線，主動推送所有設備 offline")
 
-    # 步驟 1：加鎖批次更新狀態，收集需要發布的設備清單
     devices_to_offline = []
     with DEVICE_LOCK:
         for dev_id, info in DEVICE_STATUS_MAP.items():
@@ -109,12 +107,15 @@ def _on_transport_down():
                 info["state"] = "offline"
                 devices_to_offline.append(dev_id)
 
-    # 步驟 2：鎖外發布（避免 publish 期間持鎖）
-    if devices_to_offline:
-        publisher = get_publisher(CONFIG_PATH)
-        for dev_id in devices_to_offline:
-            publisher.publish_device_status(dev_id, "offline")
-        logger.warning(f"📴 已標記 {len(devices_to_offline)} 台設備離線: {devices_to_offline}")
+    # 如果沒有設備需要下線，直接 return，保持日誌乾淨
+    if not devices_to_offline:
+        return
+
+    logger.warning(f"🔌 傳輸層斷線，主動推送 {len(devices_to_offline)} 台設備 offline")
+    publisher = get_publisher(CONFIG_PATH)
+    for dev_id in devices_to_offline:
+        publisher.publish_device_status(dev_id, "offline")
+    logger.warning(f"📴 已標記設備離線: {devices_to_offline}")
 
 
 def device_watchdog_worker():

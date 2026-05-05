@@ -1,56 +1,25 @@
-name: "JiKong Rs485 PB2A16S30P BMS"
-version: "2.0.4"
-slug: "jikong_rs485_pb2a16s30p_bms"
-description: "指令導引監控版：利用 Master 點名邏輯實現極致穩健的數據歸屬判定。"
-url: "https://github.com/loveflee/jikong-rs485-pb2a16s30p-bms-addon"
-documentation: "https://github.com/loveflee/jikong-rs485-pb2a16s30p-bms-addon"
-arch:
-  - amd64
-  - armv7
-  - aarch64
-startup: services
-boot: auto
-
-options:
-  connection_mode: "RS485 USB Dongle"
-  debug_raw_log: false
-  modbus_host: "192.168.1.100"
-  modbus_port: 502
-  modbus_timeout: 10
-  modbus_buffer_size: 4096
-  serial_device: "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
-  serial_baudrate: 115200
-  mqtt_host: "core-mosquitto"
-  mqtt_port: 1883
-  mqtt_username: "mqtt user"
-  mqtt_password: "mqtt password"
-  mqtt_discovery_prefix: "homeassistant"
-  mqtt_topic_prefix: "Jikong_BMS"
-  mqtt_client_id: "jk_bms_monitor"
+app:
+  debug_raw_log: true
   packet_expire_time: 2.0
   settings_publish_interval: 60
-
-schema:
-  connection_mode: "list(Modbus Gateway TCP|RS485 USB Dongle)"
-  debug_raw_log: bool
-  modbus_host: str
-  modbus_port: int
-  modbus_timeout: int
-  modbus_buffer_size: int
-  serial_device: str
-  serial_baudrate: int
-  mqtt_host: str
-  mqtt_port: int
-  mqtt_username: str
-  mqtt_password: str
-  mqtt_discovery_prefix: str
-  mqtt_topic_prefix: str
-  mqtt_client_id: str
-  packet_expire_time: float
-  settings_publish_interval: int
-
-uart: true
-map:
-  - type: addon_config
-    read_only: false
-panel_icon: mdi:battery-bluetooth
+  use_modbus_gateway: false
+  use_rs485_usb: true
+mqtt:
+  client_id: jk_bms_monitor
+  discovery_prefix: homeassistant
+  host: 192.168.106.5
+  password: mqtt
+  port: 1883
+  topic_prefix: Jikong_BMS
+  username: mqtt
+serial:
+  baudrate: 115200
+#  device: /dev/ttyUSB0
+#  device: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+  device: /dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_0001-if00-port0
+  timeout: 1.0
+#tcp:
+#  buffer_size: 4096
+#  host: 192.168.106.5
+#  port: 502
+#  timeout: 10

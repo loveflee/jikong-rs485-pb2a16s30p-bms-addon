@@ -1,0 +1,30 @@
+# =============================================================================
+# docker-compose.yaml - JK-BMS Gateway V2.2.2 (Industrial Hardened)
+# 修正亮點：
+#   - [Fix] 物理斷線重連防禦：改用 /dev 唯讀映射配合 privileged，解決 minor 號漂移 (Risk-6)
+# =============================================================================
+
+services:
+  jk-bms-gateway:
+    build: .
+    container_name: jkbms
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/data/config.yaml:ro
+      # 🚀 [Risk-6 修復] 映射整個 /dev 目錄 (唯讀)，讓容器能即時感知 udev 在宿主機建立的新符號連結
+      - /dev:/dev:ro
+    # 註：由於已映射 /dev 並開啟 privileged，此處無需再用 devices 靜態綁定。
+    # 請在 options.json / config.yaml 中的 serial_device 直接填寫：
+    # /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+    privileged: true
+    environment:
+      - TZ=Asia/Taipei
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

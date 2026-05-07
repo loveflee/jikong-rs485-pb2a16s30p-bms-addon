@@ -1,5 +1,5 @@
 app:
-  debug_raw_log: true
+  debug_raw_log: false
   packet_expire_time: 2.0
   settings_publish_interval: 60
   use_modbus_gateway: false
@@ -8,10 +8,10 @@ mqtt:
   client_id: jk_bms_monitor
   discovery_prefix: homeassistant
   host: 192.168.106.5
+  username: mqtt
   password: mqtt
   port: 1883
   topic_prefix: Jikong_BMS
-  username: mqtt
 serial:
   baudrate: 115200
 #  device: /dev/ttyUSB0
